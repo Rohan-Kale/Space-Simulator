@@ -120,9 +120,9 @@ impl ExampleObject {
 
     pub fn create_spiral(device: &wgpu::Device, instances: u32) -> Self {
         let mut vertex_data = Vec::new();
-        vertex_data.push( Vertex {pos: [ 0.0,   0.5, 0.0], color: [1.0, 0.0, 0.0]}); // Top
-        vertex_data.push( Vertex {pos: [-0.5,  -0.5, 0.0], color: [0.0, 1.0, 0.0]}); // Bottom Left
-        vertex_data.push( Vertex {pos: [ 0.5,  -0.5, 0.0], color: [0.0, 0.0, 1.0]}); // Bottom Right
+        vertex_data.push( Vertex {pos: [ 0.0,   0.25, 0.0], color: [1.0, 0.0, 0.0]}); // Top
+        vertex_data.push( Vertex {pos: [-0.25,  -0.25, 0.0], color: [0.0, 1.0, 0.0]}); // Bottom Left
+        vertex_data.push( Vertex {pos: [ 0.25,  -0.25, 0.0], color: [0.0, 0.0, 1.0]}); // Bottom Right
 
 
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -179,14 +179,14 @@ impl ExampleObject {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float32x2, // x,y
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<f32>() as u64 * 2,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32,
+                    format: wgpu::VertexFormat::Float32, // r
                 },
-            ]
+            ],
         };
 
         let mut vertex_buffers = Vec::new();

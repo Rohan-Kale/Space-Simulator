@@ -1,5 +1,4 @@
-
-use wgpu::{include_wgsl, PipelineCompilationOptions};
+use wgpu::{PipelineCompilationOptions, include_wgsl};
 
 mod example_object;
 use crate::{ExamplePrograms, app::example_object::ExampleObject};
@@ -10,73 +9,77 @@ pub struct AppGraphicsEngine {
 }
 
 impl AppGraphicsEngine {
-    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, example_program: &ExamplePrograms) -> Self {
-    // pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) -> Self { // add queue if you use write_buffer in create_triangle
+    pub fn new(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        example_program: &ExamplePrograms,
+    ) -> Self {
+        // pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) -> Self { // add queue if you use write_buffer in create_triangle
 
         let shaders;
         let example_object;
 
         match example_program {
             ExamplePrograms::SimpleTriangle => {
-                shaders = device.create_shader_module(include_wgsl!("../../resources/1_v_buf_shader.wgsl"));
+                shaders =
+                    device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
                 example_object = ExampleObject::create_triangle(device);
-            },
+            }
             ExamplePrograms::InstancedTriangleSpiral => {
-                shaders = device.create_shader_module(include_wgsl!("../../resources/2_instance_shader.wgsl"));
-                example_object = ExampleObject::create_spiral(device, 50);
-            },
+                shaders =
+                    device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
+                example_object = ExampleObject::create_spiral(device, 25);
+            }
             ExamplePrograms::IndexedVertexBuffers => {
-                shaders = device.create_shader_module(include_wgsl!("../../resources/1_v_buf_shader.wgsl"));
+                shaders =
+                    device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
                 example_object = ExampleObject::create_indexed_example(device);
-            },
+            }
         }
 
-
-        let pipeline_layout = device.create_pipeline_layout(
-            &wgpu::PipelineLayoutDescriptor {
-                label: Some("triangle_pipeline_layout"), 
-                bind_group_layouts: &[], 
-                immediate_size: 0, 
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("triangle_pipeline_layout"),
+            bind_group_layouts: &[],
+            immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor { 
-                label: Some("triangle_render_pipeline"), 
-                layout: Some(&pipeline_layout), 
-                vertex: wgpu::VertexState { 
-                    module: &shaders, 
-                    entry_point: Some("vs_main"), 
-                    compilation_options: PipelineCompilationOptions::default(), 
-                    buffers: &example_object.layouts, // Add vertex buffer layouts here
-                }, 
-                fragment: Some(wgpu::FragmentState {
-                    module: &shaders,
-                    entry_point: Some("fs_main"),
-                    compilation_options: PipelineCompilationOptions::default(), 
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }), 
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    unclipped_depth: false,
-                    conservative: false,
-                },
-                depth_stencil: None, 
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                
-                multiview_mask: None, 
-                cache: None, 
-            });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("triangle_render_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shaders,
+                entry_point: Some("vs_main"),
+                compilation_options: PipelineCompilationOptions::default(),
+                buffers: &example_object.layouts, // Add vertex buffer layouts here
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shaders,
+                entry_point: Some("fs_main"),
+                compilation_options: PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+
+            multiview_mask: None,
+            cache: None,
+        });
 
         Self {
             pipeline,
@@ -89,7 +92,6 @@ impl AppGraphicsEngine {
             label: Some("Render Encoder"),
         });
 
-        
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -120,14 +122,24 @@ impl AppGraphicsEngine {
         }
 
         // If we have an index buffer, draw using indexing, if we don't, draw using vertices
-        if self.example_object.index_buffer.is_some(){
-            rpass.set_index_buffer(self.example_object.index_buffer.as_ref().unwrap().slice(..), wgpu::IndexFormat::Uint32);
+        if self.example_object.index_buffer.is_some() {
+            //println!("!!!!!!!!!!!!!!!!!num to draw!!!!!!!!!!!!!!: {}", self.example_object.num_to_draw);
+            rpass.set_index_buffer(
+                self.example_object.index_buffer.as_ref().unwrap().slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
             rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..1);
+        } else {
+            // println!(
+            //     "draw {} vertices, {} instances",
+            //     self.example_object.num_to_draw, self.example_object.instances
+            // );
+            rpass.draw(
+                0..self.example_object.num_to_draw,
+                0..self.example_object.instances,
+            );
         }
-        else {
-            rpass.draw(0..self.example_object.num_to_draw, 0..self.example_object.instances);
-        }
-    
+
         drop(rpass);
 
         queue.submit(Some(encoder.finish()));

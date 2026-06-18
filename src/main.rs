@@ -22,7 +22,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let example_program = ExamplePrograms::SimpleTriangle;
+    let example_program = ExamplePrograms::InstancedTriangleSpiral;
 
     let mut app = App::new("Vertex Buffer Example".to_string(), (600, 600), example_program);
     let _ = event_loop.run_app(&mut app);
