@@ -8,29 +8,56 @@ mod app_environment;
 use crate::app_environment::AppEnvironment;
 
 mod app;
-use crate::app::AppData;
+use crate::app::*;
+
+
+enum ExamplePrograms {
+    SimpleTriangle,
+    InstancedTriangleSpiral,
+    IndexedVertexBuffers,
+}
 
 fn main() {
+    env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
-    
-    let mut app = App::default();
+
+    let example_program = ExamplePrograms::SimpleTriangle;
+
+    let mut app = App::new("Vertex Buffer Example".to_string(), (600, 600), example_program);
     let _ = event_loop.run_app(&mut app);
 }
 
 
-
-#[derive(Default)]
 struct App {
+    window_name: String,
+    window_size: (i32, i32),
     environment: Option<AppEnvironment>,
-    data: Option<AppData>,
+    engine: Option<AppGraphicsEngine>,
+
+    example_program: ExamplePrograms,
 }
 
+impl App {
+    pub fn new(window_name: String, window_size: (i32, i32), example_program: ExamplePrograms) -> Self {
+        Self {
+            window_name,
+            window_size,
+            environment: None,
+            engine: None,
+
+            example_program,
+        }
+    }
+}
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        self.environment = Some(AppEnvironment::new(&event_loop));
-        self.data = Some(AppData::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc));
+        self.environment = Some(AppEnvironment::new(&event_loop, self.window_name.clone(), self.window_size));
+        self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program));
+        
+        // add queue if using write_buffer() example
+        // self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.environment.as_ref().unwrap().queue));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -40,9 +67,9 @@ impl ApplicationHandler for App {
             },
             WindowEvent::RedrawRequested => {
                 self.environment.as_mut().unwrap().window.request_redraw();
-                let environment = self.environment.as_ref().unwrap();
+                let app_window = self.environment.as_ref().unwrap();
 
-                let frame = match environment.surface.get_current_texture() {
+                let frame = match app_window.surface.get_current_texture() {
                     Ok(frame) => frame,
                     Err(e) => {
                         eprintln!("dropped frame: {e:?}");
@@ -51,8 +78,9 @@ impl ApplicationHandler for App {
                 }; 
 
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                self.data.as_mut().unwrap().render(&environment.device, &environment.queue, &view);
+                self.engine.as_mut().unwrap().render(&app_window.queue, &app_window.device, &view);
                 frame.present();
+                
             },
             _ => (),
         }
