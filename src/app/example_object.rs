@@ -120,9 +120,20 @@ impl ExampleObject {
 
     pub fn create_spiral(device: &wgpu::Device, instances: u32) -> Self {
         let mut vertex_data = Vec::new();
-        vertex_data.push( Vertex {pos: [ 0.0,   0.25, 0.0], color: [1.0, 0.0, 0.0]}); // Top
-        vertex_data.push( Vertex {pos: [-0.25,  -0.25, 0.0], color: [0.0, 1.0, 0.0]}); // Bottom Left
-        vertex_data.push( Vertex {pos: [ 0.25,  -0.25, 0.0], color: [0.0, 0.0, 1.0]}); // Bottom Right
+        // THIS IS FOR DRAWING A SINGLE TRIANGLE
+        // vertex_data.push( Vertex {pos: [ 0.0,   0.25, 0.0], color: [1.0, 0.0, 0.0]}); // Top
+        // vertex_data.push( Vertex {pos: [-0.25,  -0.25, 0.0], color: [0.0, 1.0, 0.0]}); // Bottom Left
+        // vertex_data.push( Vertex {pos: [ 0.25,  -0.25, 0.0], color: [0.0, 0.0, 1.0]}); // Bottom Right
+
+        // IN ORDER TO DRAW SQUARE WE USE TWO TRIANGLES
+        
+        vertex_data.push(Vertex { pos: [-0.5,  0.5, 0.0], color: [1.0, 0.0, 0.0] }); // top left
+
+        vertex_data.push(Vertex { pos: [ 0.5,  0.5, 0.0],  color: [0.0, 1.0, 0.0] }); // top right
+
+        vertex_data.push(Vertex { pos: [-0.5, -0.5, 0.0],  color: [0.0, 0.0, 1.0] }); // bottom left
+
+        vertex_data.push(Vertex { pos: [ 0.5, -0.5, 0.0], color: [1.0, 1.0, 1.0] }); // bottom right
 
 
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -130,6 +141,17 @@ impl ExampleObject {
             contents: bytemuck::cast_slice(&vertex_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        
+        // we need an indices buffer because order matters now
+        let indices: &[u32] = &[ 0, 1, 2, 2, 1, 3];
+
+        let index_buffer = device.create_buffer_init( 
+            &BufferInitDescriptor {
+                label: Some("Square Index Buffer"),
+                contents: bytemuck::cast_slice(indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }
+        );
 
 
         let vertex_layout = wgpu::VertexBufferLayout {
@@ -153,16 +175,22 @@ impl ExampleObject {
         // ------------------------ Instance Buffer ------------------------
 
         let mut instance_data = Vec::new();
-        let radius_step = 0.05;
+
+        let radius_step = 0.01;
         let points_per_rotation = 15.0;
         let spiral_angle_step = 2.0 * PI / points_per_rotation;
+
         for i in 0..instances {
-            let r = radius_step * i as f32;
-            let x = r * (spiral_angle_step * i as f32).cos();
-            let y = r * (spiral_angle_step * i as f32).sin();
+            let spiral_r = radius_step * i as f32;
+
+            let x = spiral_r * (spiral_angle_step * i as f32).cos();
+            let y = spiral_r * (spiral_angle_step * i as f32).sin();
+
+            let size = 0.05;
+
             instance_data.push(x);
             instance_data.push(y);
-            instance_data.push(r);
+            instance_data.push(size);
         }
 
         let instance_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -200,8 +228,8 @@ impl ExampleObject {
         Self { 
             vertex_buffers,
             layouts,
-            index_buffer: None,
-            num_to_draw: 3, // each object drawn is a triangle made of three vertices
+            index_buffer: Some(index_buffer),
+            num_to_draw: 6, // each object drawn is a triangle made of three vertices
             instances,
         }
     }

@@ -65,7 +65,7 @@ impl AppGraphicsEngine {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -123,17 +123,18 @@ impl AppGraphicsEngine {
 
         // If we have an index buffer, draw using indexing, if we don't, draw using vertices
         if self.example_object.index_buffer.is_some() {
-            //println!("!!!!!!!!!!!!!!!!!num to draw!!!!!!!!!!!!!!: {}", self.example_object.num_to_draw);
+            println!("num to draw: {}, instances: {}", self.example_object.num_to_draw, self.example_object.instances);
             rpass.set_index_buffer(
                 self.example_object.index_buffer.as_ref().unwrap().slice(..),
                 wgpu::IndexFormat::Uint32,
             );
-            rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..1);
+            rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..self.example_object.instances);
         } else {
-            // println!(
-            //     "draw {} vertices, {} instances",
-            //     self.example_object.num_to_draw, self.example_object.instances
-            // );
+            println!(
+                "draw {} vertices, {} instances",
+                self.example_object.num_to_draw, self.example_object.instances
+            );
+            
             rpass.draw(
                 0..self.example_object.num_to_draw,
                 0..self.example_object.instances,
