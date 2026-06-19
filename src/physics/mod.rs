@@ -20,7 +20,8 @@ impl Body {
 }
 
 pub fn update_bodies(bodies: &mut Vec<Body>, delta_time: f32) {
-    let gravitational_constant = 6.67430e-11; // Gravitational constant
+    //let gravitational_constant = 6.67430e-11; // Gravitational constant
+    let gravitational_constant = 1.0; // Adjusted for simulation scale
 
     for i in 0..bodies.len() {
         let mut net_force = [0.0, 0.0]; // initialize force for body i
@@ -30,7 +31,9 @@ pub fn update_bodies(bodies: &mut Vec<Body>, delta_time: f32) {
                 let dx = bodies[j].position[0] - bodies[i].position[0];
                 let dy = bodies[j].position[1] - bodies[i].position[1];
 
-                let distance_squared = dx * dx + dy * dy;
+                let softening = 0.01; // small value to prevent singularity
+                let distance_squared = dx * dx + dy * dy + softening; // add softening to distance squared
+                //let distance_squared = dx * dx + dy * dy;
 
                 if distance_squared > 0.0 {
                     let distance = distance_squared.sqrt();
@@ -50,13 +53,13 @@ pub fn update_bodies(bodies: &mut Vec<Body>, delta_time: f32) {
     }
 
     for body in bodies.iter_mut() {
-        // Update velocity based on acceleration
         body.velocity[0] += body.acceleration[0] * delta_time;
         body.velocity[1] += body.acceleration[1] * delta_time;
 
-        // Update position based on velocity
         body.position[0] += body.velocity[0] * delta_time;
         body.position[1] += body.velocity[1] * delta_time;
+
+        println!("pos {:?}, vel {:?}", body.position, body.velocity);
     }
     
 }

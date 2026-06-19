@@ -3,6 +3,8 @@ use wgpu::{PipelineCompilationOptions, include_wgsl};
 pub mod example_object;
 use crate::{SpacePrograms, app::example_object::Object};
 
+use crate::physics::Body;
+
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
@@ -14,6 +16,7 @@ impl AppGraphicsEngine {
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         example_program: &SpacePrograms,
+        bodies: &Vec<Body>,
     ) -> Self {
         // pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) -> Self { // add queue if you use write_buffer in create_triangle
 
@@ -21,20 +24,10 @@ impl AppGraphicsEngine {
         let example_object;
 
         match example_program {
-            SpacePrograms::SimpleTriangle => {
-                shaders =
-                    device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = Object::create_triangle(device);
-            }
             SpacePrograms::CreateBodies => {
                 shaders =
                     device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = Object::create_bodies(device, 2);
-            }
-            SpacePrograms::IndexedVertexBuffers => {
-                shaders =
-                    device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = Object::create_indexed_example(device);
+                example_object = Object::create_bodies(device, bodies);
             }
         }
 
@@ -88,6 +81,14 @@ impl AppGraphicsEngine {
         }
     }
 
+    pub fn update_instances(
+        &self,
+        queue: &wgpu::Queue,
+        bodies: &Vec<Body>,
+    ) {
+        self.example_object.update_instances(queue, bodies);
+    }
+
     pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView) {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
@@ -117,14 +118,15 @@ impl AppGraphicsEngine {
 
         rpass.set_pipeline(&self.pipeline);
 
-        // Loop through each vertex buffer and set them in the render pipeline
-        for i in 0..self.example_object.vertex_buffers.len() {
-            rpass.set_vertex_buffer(i as u32, self.example_object.vertex_buffers[i].slice(..));
-        }
+        // square mesh
+        rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
+
+        // body positions + radius
+        rpass.set_vertex_buffer(1, self.example_object.instance_buffer.slice(..));
 
         // If we have an index buffer, draw using indexing, if we don't, draw using vertices
         if self.example_object.index_buffer.is_some() {
-            println!("num to draw: {}, instances: {}", self.example_object.num_to_draw, self.example_object.instances);
+            //println!("num to draw: {}, instances: {}", self.example_object.num_to_draw, self.example_object.instances);
             rpass.set_index_buffer(
                 self.example_object.index_buffer.as_ref().unwrap().slice(..),
                 wgpu::IndexFormat::Uint32,

@@ -14,10 +14,10 @@ use crate::app::*;
 mod physics;
 use physics::Body;
 
+
+
 enum SpacePrograms {
-    SimpleTriangle,
     CreateBodies,
-    IndexedVertexBuffers,
 }
 
 fn main() {
@@ -51,15 +51,15 @@ impl App {
                 position: [0.0, 0.0],
                 velocity: [0.0, 0.0],
                 acceleration: [0.0, 0.0],
-                mass: 100.0,
+                mass: 0.1,
                 radius: 0.05,
             },
 
             Body {
                 position: [0.4, 0.0],
-                velocity: [0.0, 0.2],
+                velocity: [0.0, 0.0],
                 acceleration: [0.0, 0.0],
-                mass: 10.0,
+                mass: 0.1,
                 radius: 0.05,
             },
         ];
@@ -77,7 +77,7 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.environment = Some(AppEnvironment::new(&event_loop, self.window_name.clone(), self.window_size));
-        self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program));
+        self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies));
         
         // add queue if using write_buffer() example
         // self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.environment.as_ref().unwrap().queue));
@@ -90,7 +90,19 @@ impl ApplicationHandler for App {
             },
             WindowEvent::RedrawRequested => {
                 self.environment.as_mut().unwrap().window.request_redraw();
+
+                physics::update_bodies(&mut self.bodies, 0.001);
+
                 let app_window = self.environment.as_ref().unwrap();
+
+                // Send new body positions to GPU
+                self.engine
+                    .as_ref()
+                    .unwrap()
+                    .update_instances(
+                        &app_window.queue,
+                        &self.bodies
+                    );
 
                 let frame = match app_window.surface.get_current_texture() {
                     Ok(frame) => frame,
