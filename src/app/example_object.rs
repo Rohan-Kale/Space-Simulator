@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::{BufferDescriptor, VertexBufferLayout, naga::DerivativeAxis::Y, util::{BufferInitDescriptor, DeviceExt}, wgc::device::queue};
+use winit::dpi::Position;
 
 #[repr(C)]
 #[derive(Copy, Clone, Zeroable, Pod)]
@@ -12,16 +13,7 @@ struct Vertex {
     uv: [f32; 2],
 }
 
-pub struct Body {
-    pub position: [f32; 2],
-    pub velocity: [f32; 2],
-    pub acceleration: [f32; 2],
-    pub mass: f32,
-    pub radius: f32,
-
-}
-
-pub struct ExampleObject {
+pub struct Object {
     pub vertex_buffers: Vec<wgpu::Buffer>, 
     pub layouts: Vec<VertexBufferLayout<'static>>,
     pub index_buffer: Option<wgpu::Buffer>,
@@ -29,11 +21,11 @@ pub struct ExampleObject {
     pub instances: u32,
 }
 
-impl ExampleObject {
+impl Object {
     pub fn create_triangle(device: &wgpu::Device) -> Self {
     // pub fn create_triangle(device: &wgpu::Device, queue: &wgpu::Queue) -> Self { // queue is needed as an argument if you write to the buffer
         let mut vertex_data = Vec::new();
-         vertex_data.push( Vertex {pos: [ 0.0,   0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.5, 1.0] }); // Top
+        vertex_data.push( Vertex {pos: [ 0.0,   0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.5, 1.0] }); // Top
         vertex_data.push( Vertex {pos: [-0.5,  -0.5, 0.0], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] }); // Bottom Left
         vertex_data.push( Vertex {pos: [ 0.5,  -0.5, 0.0], color: [0.0, 0.0, 1.0], uv: [1.0, 0.0] }); // Bottom Right
 
@@ -51,7 +43,7 @@ impl ExampleObject {
         });
 
 
-        // Mapping the buffer means to map the memory addresses to the CPU space (make the buffers memory range available to CPU operations)
+        // Mapping the buffer means to map the memory addresses to the CPU Object (make the buffers memory range available to CPU operations)
         //  The buffer can be mapped to the CPU, allowing us to read and write in this program, or unmapped, freeing it for GPU programs 
         //  The goal is to prevent both the CPU and GPU from altering the data at the same time, which would cause a race condition (this means the 
         //      result is determined by whichever system was executed first)
@@ -87,10 +79,6 @@ impl ExampleObject {
 
         queue.write_buffer(&vertex_buffer, 0, vertex_data_raw);
         */
-
-
-
-
 
         let layout = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -128,7 +116,7 @@ impl ExampleObject {
     // ----------------------------------- Create a spiral of triangles -----------------------------------
     // Instance buffer example
 
-    pub fn create_spiral(device: &wgpu::Device, instances: u32) -> Self {
+    pub fn create_bodies(device: &wgpu::Device, instances: u32) -> Self {
         let mut vertex_data = Vec::new();
         // THIS IS FOR DRAWING A SINGLE TRIANGLE
         // vertex_data.push( Vertex {pos: [ 0.0,   0.25, 0.0], color: [1.0, 0.0, 0.0]}); // Top

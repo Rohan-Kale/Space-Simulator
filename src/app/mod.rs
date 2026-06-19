@@ -1,19 +1,19 @@
 use wgpu::{PipelineCompilationOptions, include_wgsl};
 
 pub mod example_object;
-use crate::{ExamplePrograms, app::example_object::ExampleObject};
+use crate::{SpacePrograms, app::example_object::Object};
 
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
-    example_object: ExampleObject,
+    example_object: Object,
 }
 
 impl AppGraphicsEngine {
     pub fn new(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
-        example_program: &ExamplePrograms,
+        example_program: &SpacePrograms,
     ) -> Self {
         // pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) -> Self { // add queue if you use write_buffer in create_triangle
 
@@ -21,20 +21,20 @@ impl AppGraphicsEngine {
         let example_object;
 
         match example_program {
-            ExamplePrograms::SimpleTriangle => {
+            SpacePrograms::SimpleTriangle => {
                 shaders =
                     device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = ExampleObject::create_triangle(device);
+                example_object = Object::create_triangle(device);
             }
-            ExamplePrograms::InstancedTriangleSpiral => {
+            SpacePrograms::CreateBodies => {
                 shaders =
                     device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = ExampleObject::create_spiral(device, 2);
+                example_object = Object::create_bodies(device, 2);
             }
-            ExamplePrograms::IndexedVertexBuffers => {
+            SpacePrograms::IndexedVertexBuffers => {
                 shaders =
                     device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = ExampleObject::create_indexed_example(device);
+                example_object = Object::create_indexed_example(device);
             }
         }
 

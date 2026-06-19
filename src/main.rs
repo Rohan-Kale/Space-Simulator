@@ -9,11 +9,14 @@ use crate::app_environment::AppEnvironment;
 
 mod app;
 use crate::app::*;
-use app::example_object::Body;
 
-enum ExamplePrograms {
+
+mod physics;
+use physics::Body;
+
+enum SpacePrograms {
     SimpleTriangle,
-    InstancedTriangleSpiral,
+    CreateBodies,
     IndexedVertexBuffers,
 }
 
@@ -22,7 +25,7 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let example_program = ExamplePrograms::InstancedTriangleSpiral;
+    let example_program = SpacePrograms::CreateBodies;
 
     let mut app = App::new("Vertex Buffer Example".to_string(), (600, 600), example_program);
     let _ = event_loop.run_app(&mut app);
@@ -37,11 +40,11 @@ struct App {
 
     bodies: Vec<Body>,
 
-    example_program: ExamplePrograms,
+    example_program: SpacePrograms,
 }
 
 impl App {
-    pub fn new(window_name: String, window_size: (i32, i32), example_program: ExamplePrograms) -> Self {
+    pub fn new(window_name: String, window_size: (i32, i32), example_program: SpacePrograms) -> Self {
 
         let bodies = vec![
             Body {
@@ -65,7 +68,7 @@ impl App {
             window_size,
             environment: None,
             engine: None,
-            bodies: Vec::new(),
+            bodies,
             example_program,
         }
     }
