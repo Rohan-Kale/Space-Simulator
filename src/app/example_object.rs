@@ -12,6 +12,15 @@ struct Vertex {
     uv: [f32; 2],
 }
 
+pub struct Body {
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub acceleration: [f32; 2],
+    pub mass: f32,
+    pub radius: f32,
+
+}
+
 pub struct ExampleObject {
     pub vertex_buffers: Vec<wgpu::Buffer>, 
     pub layouts: Vec<VertexBufferLayout<'static>>,

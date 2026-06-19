@@ -1,7 +1,8 @@
 use wgpu::{PipelineCompilationOptions, include_wgsl};
 
-mod example_object;
+pub mod example_object;
 use crate::{ExamplePrograms, app::example_object::ExampleObject};
+
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,

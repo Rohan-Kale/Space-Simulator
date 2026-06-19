@@ -9,7 +9,7 @@ use crate::app_environment::AppEnvironment;
 
 mod app;
 use crate::app::*;
-
+use app::example_object::Body;
 
 enum ExamplePrograms {
     SimpleTriangle,
@@ -35,17 +35,37 @@ struct App {
     environment: Option<AppEnvironment>,
     engine: Option<AppGraphicsEngine>,
 
+    bodies: Vec<Body>,
+
     example_program: ExamplePrograms,
 }
 
 impl App {
     pub fn new(window_name: String, window_size: (i32, i32), example_program: ExamplePrograms) -> Self {
+
+        let bodies = vec![
+            Body {
+                position: [0.0, 0.0],
+                velocity: [0.0, 0.0],
+                acceleration: [0.0, 0.0],
+                mass: 100.0,
+                radius: 0.05,
+            },
+
+            Body {
+                position: [0.4, 0.0],
+                velocity: [0.0, 0.2],
+                acceleration: [0.0, 0.0],
+                mass: 10.0,
+                radius: 0.05,
+            },
+        ];
         Self {
             window_name,
             window_size,
             environment: None,
             engine: None,
-
+            bodies: Vec::new(),
             example_program,
         }
     }
