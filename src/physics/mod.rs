@@ -59,7 +59,7 @@ pub fn update_bodies(bodies: &mut Vec<Body>, delta_time: f32) {
         body.position[0] += body.velocity[0] * delta_time;
         body.position[1] += body.velocity[1] * delta_time;
 
-        println!("pos {:?}, vel {:?}", body.position, body.velocity);
+        //println!("pos {:?}, vel {:?}", body.position, body.velocity);
     }
     
 }

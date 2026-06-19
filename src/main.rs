@@ -46,23 +46,38 @@ struct App {
 impl App {
     pub fn new(window_name: String, window_size: (i32, i32), example_program: SpacePrograms) -> Self {
 
-        let bodies = vec![
-            Body {
-                position: [0.0, 0.0],
-                velocity: [0.0, 0.0],
-                acceleration: [0.0, 0.0],
-                mass: 0.1,
-                radius: 0.05,
-            },
+        let mut bodies = Vec::new();
 
-            Body {
-                position: [0.4, 0.0],
-                velocity: [0.0, 0.0],
+        bodies.push(Body {
+            position: [0.0, 0.0],
+            velocity: [0.0, 0.0],
+            acceleration: [0.0, 0.0],
+            mass: 1.0,
+            radius: 0.05,
+        });
+
+        for i in 0..200 {
+            let angle = i as f32 * 0.5;
+            let radius = 0.2 + i as f32 * 0.005;
+
+            let velocity = (1.0 / radius).sqrt();
+
+            bodies.push(Body {
+                position: [
+                    radius * angle.cos(),
+                    radius * angle.sin(),
+                ],
+
+                velocity: [
+                    -velocity * angle.sin(),
+                    velocity * angle.cos(),
+                ],
+
                 acceleration: [0.0, 0.0],
-                mass: 0.1,
-                radius: 0.05,
-            },
-        ];
+                mass: 0.01,
+                radius: 0.01,
+            });
+        }
         Self {
             window_name,
             window_size,
