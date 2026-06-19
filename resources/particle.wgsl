@@ -1,14 +1,17 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
+    @location(1) uv: vec2<f32>,
 };
 
 @vertex
 fn vs_main(
     @location(0) pos: vec3<f32>,
     @location(1) color: vec3<f32>,
-    @location(2) offset: vec2<f32>,
-    @location(3) radius: f32,
+    @location(2) uv: vec2<f32>,       // vertex data
+
+    @location(3) offset: vec2<f32>,
+    @location(4) radius: f32,
 ) -> VertexOutput {
 
     var out: VertexOutput;
@@ -22,7 +25,7 @@ fn vs_main(
     );
 
     out.color = color;
-
+    out.uv = uv;
     return out;
 }
 
@@ -30,6 +33,14 @@ fn vs_main(
 fn fs_main(
     in: VertexOutput
 ) -> @location(0) vec4<f32> {
+
+    let center = vec2<f32>(0.5,0.5);
+
+    let dist = distance(in.uv, center);
+
+    if dist > 0.5 {
+        discard;
+    }
 
     return vec4<f32>(
         in.color,

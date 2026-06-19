@@ -9,6 +9,7 @@ use wgpu::{BufferDescriptor, VertexBufferLayout, naga::DerivativeAxis::Y, util::
 struct Vertex {
     pos: [f32; 3],
     color: [f32; 3],
+    uv: [f32; 2],
 }
 
 pub struct ExampleObject {
@@ -23,9 +24,9 @@ impl ExampleObject {
     pub fn create_triangle(device: &wgpu::Device) -> Self {
     // pub fn create_triangle(device: &wgpu::Device, queue: &wgpu::Queue) -> Self { // queue is needed as an argument if you write to the buffer
         let mut vertex_data = Vec::new();
-        vertex_data.push( Vertex {pos: [ 0.0,   0.5, 0.0], color: [1.0, 0.0, 0.0]}); // Top
-        vertex_data.push( Vertex {pos: [-0.5,  -0.5, 0.0], color: [0.0, 1.0, 0.0]}); // Bottom Left
-        vertex_data.push( Vertex {pos: [ 0.5,  -0.5, 0.0], color: [0.0, 0.0, 1.0]}); // Bottom Right
+         vertex_data.push( Vertex {pos: [ 0.0,   0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.5, 1.0] }); // Top
+        vertex_data.push( Vertex {pos: [-0.5,  -0.5, 0.0], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] }); // Bottom Left
+        vertex_data.push( Vertex {pos: [ 0.5,  -0.5, 0.0], color: [0.0, 0.0, 1.0], uv: [1.0, 0.0] }); // Bottom Right
 
         
         // ------------------------------------ Manual Buffer Initialization ------------------------------------
@@ -127,13 +128,13 @@ impl ExampleObject {
 
         // IN ORDER TO DRAW SQUARE WE USE TWO TRIANGLES
         
-        vertex_data.push(Vertex { pos: [-0.5,  0.5, 0.0], color: [1.0, 0.0, 0.0] }); // top left
+        vertex_data.push(Vertex { pos: [-0.5,  0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.0, 1.0] }); // top left
 
-        vertex_data.push(Vertex { pos: [ 0.5,  0.5, 0.0],  color: [0.0, 1.0, 0.0] }); // top right
+        vertex_data.push(Vertex { pos: [ 0.5,  0.5, 0.0],  color: [0.0, 1.0, 0.0], uv: [1.0, 1.0] }); // top right
 
-        vertex_data.push(Vertex { pos: [-0.5, -0.5, 0.0],  color: [0.0, 0.0, 1.0] }); // bottom left
+        vertex_data.push(Vertex { pos: [-0.5, -0.5, 0.0],  color: [0.0, 0.0, 1.0], uv: [0.0, 0.0]   }); // bottom left
 
-        vertex_data.push(Vertex { pos: [ 0.5, -0.5, 0.0], color: [1.0, 1.0, 1.0] }); // bottom right
+        vertex_data.push(Vertex { pos: [ 0.5, -0.5, 0.0], color: [1.0, 1.0, 1.0], uv: [1.0, 0.0] }); // bottom right
 
 
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -167,7 +168,12 @@ impl ExampleObject {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, 
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
-                }
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
             ]
         };
 
@@ -209,12 +215,12 @@ impl ExampleObject {
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
-                    shader_location: 2,
+                    shader_location: 3,
                     format: wgpu::VertexFormat::Float32x2, // x,y
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<f32>() as u64 * 2,
-                    shader_location: 3,
+                    shader_location: 4,
                     format: wgpu::VertexFormat::Float32, // r
                 },
             ],
@@ -294,7 +300,7 @@ impl ExampleObject {
         ];
 
         for i in 0..points.len() {
-            vertex_data.push( Vertex {pos: points[i], color: color[i]});
+            vertex_data.push( Vertex {pos: points[i], color: color[i], uv: [0.0, 0.0]});
         }
 
         let mut index_vec = Vec::new();
@@ -314,18 +320,29 @@ impl ExampleObject {
         let vertex_layout = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
+
             attributes: &[
+                // position
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
                     format: wgpu::VertexFormat::Float32x3,
                 },
+
+                // color
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, 
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
-                }
-            ]
+                },
+
+                // uv
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
         };
 
         let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -336,9 +353,11 @@ impl ExampleObject {
 
         let mut vertex_buffers = Vec::new();
         vertex_buffers.push(vertex_buffer);
+        //vertex_buffers.push(index_buffer); 
 
         let mut layouts = Vec::new();
         layouts.push(vertex_layout);
+        //layouts.push(instance_layout);
 
         let index_buffer = Some(index_buffer);
 
