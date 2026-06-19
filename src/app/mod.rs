@@ -28,7 +28,7 @@ impl AppGraphicsEngine {
             ExamplePrograms::InstancedTriangleSpiral => {
                 shaders =
                     device.create_shader_module(include_wgsl!("../../resources/particle.wgsl"));
-                example_object = ExampleObject::create_spiral(device, 25);
+                example_object = ExampleObject::create_spiral(device, 2);
             }
             ExamplePrograms::IndexedVertexBuffers => {
                 shaders =

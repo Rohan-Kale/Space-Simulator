@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
-use wgpu::{BufferDescriptor, VertexBufferLayout, util::{BufferInitDescriptor, DeviceExt}, wgc::device::queue};
+use wgpu::{BufferDescriptor, VertexBufferLayout, naga::DerivativeAxis::Y, util::{BufferInitDescriptor, DeviceExt}, wgc::device::queue};
 
 #[repr(C)]
 #[derive(Copy, Clone, Zeroable, Pod)]
@@ -176,17 +176,20 @@ impl ExampleObject {
 
         let mut instance_data = Vec::new();
 
-        let radius_step = 0.01;
-        let points_per_rotation = 15.0;
-        let spiral_angle_step = 2.0 * PI / points_per_rotation;
+        // let radius_step = 0.01;
+        // let points_per_rotation = 15.0;
+        // let spiral_angle_step = 2.0 * PI / points_per_rotation;
+        let distance = 0.4;
 
         for i in 0..instances {
-            let spiral_r = radius_step * i as f32;
+            // let spiral_r = radius_step * i as f32;
 
-            let x = spiral_r * (spiral_angle_step * i as f32).cos();
-            let y = spiral_r * (spiral_angle_step * i as f32).sin();
+            // let x = spiral_r * (spiral_angle_step * i as f32).cos();
+            // let y = spiral_r * (spiral_angle_step * i as f32).sin();
+            let x = distance * i as f32;
+            let y = 0.0;
 
-            let size = 0.05;
+            let size = 0.05 + (i as f32 * 0.03);
 
             instance_data.push(x);
             instance_data.push(y);
