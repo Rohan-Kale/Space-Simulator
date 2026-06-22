@@ -47,7 +47,7 @@ impl Object {
 
     pub fn create_bodies(device: &wgpu::Device, bodies: &Vec<Body>) -> Self {
         let mut vertex_data = Vec::new();
-        // IN ORDER TO DRAW SQUARE WE USE TWO TRIANGLES
+        // IN ORDER TO DRAW SQUARE MESH WE USE TWO TRIANGLES
         
         vertex_data.push(Vertex { pos: [-0.5,  0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.0, 1.0] }); // top left
 
@@ -105,6 +105,7 @@ impl Object {
         for body in bodies {
             body_data.push(body.position[0]);
             body_data.push(body.position[1]);
+            body_data.push(body.position[2]);
             body_data.push(body.radius);
         }
 
@@ -116,7 +117,7 @@ impl Object {
 
 
         let instance_layout = wgpu::VertexBufferLayout {
-            array_stride: (std::mem::size_of::<f32>() * 3) as wgpu::BufferAddress,
+            array_stride: (std::mem::size_of::<f32>() * 4) as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -125,7 +126,7 @@ impl Object {
                     format: wgpu::VertexFormat::Float32x2, // x,y
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<f32>() as u64 * 2,
+                    offset: std::mem::size_of::<f32>() as u64 * 3,
                     shader_location: 4,
                     format: wgpu::VertexFormat::Float32, // r
                 },

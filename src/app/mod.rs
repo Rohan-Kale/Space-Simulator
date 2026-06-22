@@ -5,10 +5,17 @@ use crate::{SpacePrograms, app::example_object::Object};
 
 use crate::physics::Body;
 
+pub mod camera;
+use crate::app::camera::{Camera, CameraUniform};
+use wgpu::util::DeviceExt;
+
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
     example_object: Object,
+
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
 }
 
 impl AppGraphicsEngine {
@@ -17,8 +24,24 @@ impl AppGraphicsEngine {
         config: &wgpu::SurfaceConfiguration,
         example_program: &SpacePrograms,
         bodies: &Vec<Body>,
+        camera: &Camera,
     ) -> Self {
-        // pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration, queue: &wgpu::Queue) -> Self { // add queue if you use write_buffer in create_triangle
+
+        let camera_uniform = CameraUniform {
+            view_proj: camera
+                .build_view_projection_matrix()
+                .to_cols_array_2d(),
+        };
+
+
+        let camera_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Camera Buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM |
+                    wgpu::BufferUsages::COPY_DST,
+            }
+        );
 
         let shaders;
         let example_object;
@@ -31,9 +54,44 @@ impl AppGraphicsEngine {
             }
         }
 
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(
+                &wgpu::BindGroupLayoutDescriptor {
+                    label: Some("camera_bind_group_layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::VERTEX,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }
+                    ],
+                }
+            );
+
+
+        let camera_bind_group =
+            device.create_bind_group(
+                &wgpu::BindGroupDescriptor {
+                    label: Some("camera_bind_group"),
+                    layout: &camera_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: camera_buffer.as_entire_binding(),
+                        }
+                    ],
+                }
+            );
+
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("triangle_pipeline_layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&camera_bind_group_layout],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -78,6 +136,8 @@ impl AppGraphicsEngine {
         Self {
             pipeline,
             example_object,
+            camera_buffer,
+            camera_bind_group,
         }
     }
 
@@ -87,6 +147,20 @@ impl AppGraphicsEngine {
         bodies: &Vec<Body>,
     ) {
         self.example_object.update_instances(queue, bodies);
+    }
+
+    pub fn update_camera(&self, queue: &wgpu::Queue, camera: &Camera,) {
+        let uniform = CameraUniform {
+            view_proj: camera
+                .build_view_projection_matrix()
+                .to_cols_array_2d(),
+        };
+
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[uniform]),
+        );
     }
 
     pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView) {
@@ -117,6 +191,12 @@ impl AppGraphicsEngine {
         });
 
         rpass.set_pipeline(&self.pipeline);
+
+        rpass.set_bind_group(
+            0,
+            &self.camera_bind_group,
+            &[],
+        );
 
         // square mesh
         rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
