@@ -1,11 +1,10 @@
 
 use winit::application::ApplicationHandler;
+use winit::event::MouseScrollDelta::{LineDelta, PixelDelta};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{WindowId};
-use winit::keyboard::{Key, KeyCode};
-use winit::window::CursorGrabMode;
-use winit::event::DeviceEvent;
+use winit::keyboard::KeyCode;
 
 use std::time::Instant;
 use std::collections::HashSet;
@@ -64,18 +63,18 @@ impl App {
         let mut bodies = Vec::new();
 
         bodies.push(Body {
-            position: [0.0, 0.0, 5.0],
-            velocity: [0.0, 4.47, 1.0],
+            position: [-2.0, 0.0, 0.0],
+            velocity: [0.0, -2.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 2.0,
+            mass: 50.0,
             radius: 0.5,
         });
 
         bodies.push(Body {
-            position: [0.0, 0.0, 0.0],
-            velocity: [0.0, 0.0, 0.0],
+            position: [2.0, 0.0, 0.0],
+            velocity: [0.0, 2.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 200.0,
+            mass: 50.0,
             radius: 0.5,
         });
 
@@ -140,6 +139,7 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.environment = Some(AppEnvironment::new(&event_loop, self.window_name.clone(), self.window_size));
         self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies, &self.camera));
+        
         // add queue if using write_buffer() example
         // self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.environment.as_ref().unwrap().queue));
     }
@@ -176,6 +176,21 @@ impl ApplicationHandler for App {
                         self.keys.remove(&key);
                     }
                 }
+            }
+            WindowEvent::MouseWheel { device_id, delta, phase } => {
+                let zoom_speed = 0.05;
+
+                match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
+                        self.camera.fovy -= y * zoom_speed;
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                        self.camera.fovy -= pos.y as f32 * zoom_speed * 0.01;
+                    }
+                }
+
+                //prevent camera from tweaking out
+                self.camera.fovy = self.camera.fovy.clamp(10.0_f32.to_radians(), 90.0_f32.to_radians());
             }
             WindowEvent::CursorMoved { position, .. } => {
 
