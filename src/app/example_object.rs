@@ -32,10 +32,11 @@ impl Object {
     ) {
         let mut instance_data = Vec::new();
 
-        for body in bodies {
-            instance_data.push(body.position[0]);
-            instance_data.push(body.position[1]);
-            instance_data.push(body.radius);
+        for instance in bodies {
+            instance_data.push(instance.position[0]);
+            instance_data.push(instance.position[1]);
+            instance_data.push(instance.position[2]);
+            instance_data.push(instance.radius);
         }
 
         queue.write_buffer(
@@ -45,18 +46,56 @@ impl Object {
         );
     }
 
+    pub fn create_sphere(vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>) {
+        let stacks = 32;
+        let sectors = 32;
+
+        for i in 0..=stacks {
+
+            let phi = PI * i as f32 / stacks as f32;
+
+            for j in 0..=sectors {
+
+                let theta = 2.0 * PI * j as f32 / sectors as f32;
+
+
+                let x = theta.cos() * phi.sin();
+                let y = phi.cos();
+                let z = theta.sin() * phi.sin();
+
+                vertices.push(Vertex {
+                    pos: [x,y,z],
+                    color: [1.0,1.0,1.0],
+                    uv: [
+                        j as f32 / sectors as f32,
+                        i as f32 / stacks as f32
+                    ],
+                });
+            }
+        }
+
+
+        for i in 0..stacks {
+            for j in 0..sectors {
+                let a = i * (sectors+1) + j;
+                let b = a + sectors + 1;
+
+                indices.push(a as u32);
+                indices.push(b as u32);
+                indices.push((a+1) as u32);
+
+                indices.push((a+1) as u32);
+                indices.push(b as u32);
+                indices.push((b+1) as u32);
+            }
+        }
+    }
+
     pub fn create_bodies(device: &wgpu::Device, bodies: &Vec<Body>) -> Self {
         let mut vertex_data = Vec::new();
-        // IN ORDER TO DRAW SQUARE MESH WE USE TWO TRIANGLES
-        
-        vertex_data.push(Vertex { pos: [-0.5,  0.5, 0.0], color: [1.0, 0.0, 0.0], uv: [0.0, 1.0] }); // top left
+        let mut indices = Vec::new();
 
-        vertex_data.push(Vertex { pos: [ 0.5,  0.5, 0.0],  color: [0.0, 1.0, 0.0], uv: [1.0, 1.0] }); // top right
-
-        vertex_data.push(Vertex { pos: [-0.5, -0.5, 0.0],  color: [0.0, 0.0, 1.0], uv: [0.0, 0.0]   }); // bottom left
-
-        vertex_data.push(Vertex { pos: [ 0.5, -0.5, 0.0], color: [1.0, 1.0, 1.0], uv: [1.0, 0.0] }); // bottom right
-
+        Object::create_sphere(&mut vertex_data, &mut indices);
 
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Spiral Vertex Buffer"),
@@ -65,16 +104,13 @@ impl Object {
         });
         
         // we need an indices buffer because order matters now
-        let indices: &[u32] = &[ 0, 1, 2, 2, 1, 3];
-
-        let index_buffer = device.create_buffer_init( 
+        let index_buffer = device.create_buffer_init(
             &BufferInitDescriptor {
-                label: Some("Square Index Buffer"),
-                contents: bytemuck::cast_slice(indices),
+                label: Some("Sphere Index Buffer"),
+                contents: bytemuck::cast_slice(&indices),
                 usage: wgpu::BufferUsages::INDEX,
             }
         );
-
 
         let vertex_layout = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -123,12 +159,12 @@ impl Object {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x2, // x,y
+                    format: wgpu::VertexFormat::Float32x3, // position
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<f32>() as u64 * 3,
+                    offset: std::mem::size_of::<[f32;3]>() as u64,
                     shader_location: 4,
-                    format: wgpu::VertexFormat::Float32, // r
+                    format: wgpu::VertexFormat::Float32, // radius
                 },
             ],
         };
@@ -144,10 +180,12 @@ impl Object {
             vertex_buffers,
             layouts,
             index_buffer: Some(index_buffer),
-            num_to_draw: 6, // each object drawn is a triangle made of three vertices
-            instances: bodies.len() as u32, // number of instances to draw
+            num_to_draw: indices.len() as u32, // draw the number of of isntances
+            instances: bodies.len() as u32, // number of bodies to draw
             instance_buffer,
         }
     }
+
+    
 
 }

@@ -65,36 +65,47 @@ impl App {
 
         bodies.push(Body {
             position: [0.0, 0.0, 5.0],
-            velocity: [0.0, 0., 0.0],
+            velocity: [0.0, 4.47, 1.0],
             acceleration: [0.0, 0.0, 0.0],
             mass: 2.0,
             radius: 0.5,
         });
 
-        for i in 0..2 {
-            let angle = i as f32 * 0.01;
-            let radius = 10.0 + i as f32 * 0.01;
+        bodies.push(Body {
+            position: [0.0, 0.0, 0.0],
+            velocity: [0.0, 0.0, 0.0],
+            acceleration: [0.0, 0.0, 0.0],
+            mass: 200.0,
+            radius: 0.5,
+        });
 
-            bodies.push(Body {
-                position: [
-                    radius * angle.cos(),
-                    radius * angle.sin(),
-                    0.0,
-                ],
-                velocity: [
-                    -angle.sin(),
-                    angle.cos(),
-                    0.0,
-                ],
-                acceleration: [0.0, 0.0, 0.0],
-                mass: 1.0,
-                radius: 0.02,
-            });
-        }
+        // for i in 0..2 {
+        //     let angle = i as f32 * 0.2;
+        //     let radius = 10.0 + (i as f32 * 0.05);
+
+        //     bodies.push(Body {
+        //         position: [
+        //             radius * angle.cos(),
+        //             radius * angle.sin(),
+        //             0.0,
+        //         ],
+
+        //         velocity: [
+        //             -angle.sin() * 0.5,
+        //             angle.cos() * 0.5,
+        //             0.0,
+        //         ],
+
+        //         acceleration: [0.0,0.0,0.0],
+
+        //         mass: 0.01,
+
+        //         radius: 0.05,
+        //     });
+        // }
 
         let camera = Camera {
             position: glam::vec3(0.0, 0.0, 10.0),
-            target: glam::Vec3::ZERO,
             up: glam::Vec3::Y,
 
             aspect: window_size.0 as f32 / window_size.1 as f32,
