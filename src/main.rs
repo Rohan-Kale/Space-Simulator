@@ -14,7 +14,7 @@ use crate::app::camera::Camera;
 mod physics;
 use physics::Body;
 
-
+use std::time::Instant;
 
 enum SpacePrograms {
     CreateBodies,
@@ -43,6 +43,10 @@ struct App {
     camera: Camera,
 
     example_program: SpacePrograms,
+
+    last_fps_update: Instant,
+    frame_count: u32,
+    fps: u32,
 }
 
 impl App {
@@ -58,38 +62,26 @@ impl App {
             radius: 0.5,
         });
 
-        bodies.push(Body {
-            position: [5.0, 0.0, -5.0],
-            velocity: [0.0, 0., 0.0],
-            acceleration: [0.0, 0.0, 0.0],
-            mass: 2.0,
-            radius: 0.5,
-        });
+        for i in 0..200 {
+            let angle = i as f32 * 0.01;
+            let radius = 10.0 + i as f32 * 0.01;
 
-        // for i in 0..2 {
-        //     let angle = i as f32 * 0.5;
-        //     let radius = 0.2 + i as f32 * 0.005;
-
-        //     let velocity = (1.0 / radius).sqrt();
-
-        //     bodies.push(Body {
-        //         position: [
-        //             radius * angle.cos(),
-        //             radius * angle.sin(),
-        //             0.0
-        //         ],
-
-        //         velocity: [
-        //             -velocity * angle.sin(),
-        //             velocity * angle.cos(),
-        //             0.0
-        //         ],
-
-        //         acceleration: [0.0, 0.0, 0.0],
-        //         mass: 0.01,
-        //         radius: 0.01,
-        //     });
-        // }
+            bodies.push(Body {
+                position: [
+                    radius * angle.cos(),
+                    radius * angle.sin(),
+                    0.0,
+                ],
+                velocity: [
+                    -angle.sin(),
+                    angle.cos(),
+                    0.0,
+                ],
+                acceleration: [0.0, 0.0, 0.0],
+                mass: 1.0,
+                radius: 0.02,
+            });
+        }
 
         let camera = Camera {
             position: glam::vec3(0.0, 0.0, 10.0),
@@ -111,6 +103,9 @@ impl App {
             bodies,
             camera,
             example_program,
+            last_fps_update: Instant::now(),
+            frame_count: 0,
+            fps: 0,
         }
     }
 }
@@ -131,8 +126,34 @@ impl ApplicationHandler for App {
             },
             WindowEvent::RedrawRequested => {
                 self.environment.as_mut().unwrap().window.request_redraw();
+                
+                self.frame_count += 1;
+
+                if self.last_fps_update.elapsed().as_secs_f32() >= 1.0 {
+                    self.fps = self.frame_count;
+                    self.frame_count = 0;
+                    self.last_fps_update = Instant::now();
+
+                    println!(
+                        "FPS: {} | Bodies: {}",
+                        self.fps,
+                        self.bodies.len()
+                    );
+                }
+                
+
+                let physics_start = Instant::now();
 
                 physics::update_bodies(&mut self.bodies, 0.001);
+
+                let physics_ms = physics_start.elapsed().as_secs_f64() * 1000.0;
+                
+                println!(
+                    "FPS: {} | Bodies: {} | Physics: {:.3} ms",
+                    self.fps,
+                    self.bodies.len(),
+                    physics_ms
+                );
 
                 let app_window = self.environment.as_ref().unwrap();
 

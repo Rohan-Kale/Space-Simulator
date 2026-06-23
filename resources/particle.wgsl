@@ -37,6 +37,7 @@ fn vs_main(
     out.color = color;
     out.uv = uv;
 
+
     return out;
 }
 
@@ -45,12 +46,28 @@ fn fs_main(
     in: VertexOutput
 ) -> @location(0) vec4<f32> {
 
-    let center = vec2<f32>(0.5, 0.5);
-    let dist = distance(in.uv, center);
+    let p = (in.uv - vec2<f32>(0.5, 0.5)) * 2.0;
 
-    if (dist > 0.5) {
+    let r2 = dot(p, p);
+
+    if (r2 > 1.0) {
         discard;
     }
 
-    return vec4<f32>(in.color, 1.0);
+    let z = sqrt(1.0-r2);
+
+    let normal =
+        normalize(vec3<f32>(p.x, p.y, z));
+
+    let light_dir =
+        normalize(vec3<f32>(1.0, 1.0, 1.0));
+
+    let brightness =
+        max(dot(normal, light_dir), 0.1);
+
+    return vec4<f32>(
+        in.color * brightness,
+        1.0
+    );
+
 }
