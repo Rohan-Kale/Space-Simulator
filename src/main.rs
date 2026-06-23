@@ -3,6 +3,12 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{WindowId};
+use winit::keyboard::{Key, KeyCode};
+use winit::window::CursorGrabMode;
+use winit::event::DeviceEvent;
+
+use std::time::Instant;
+use std::collections::HashSet;
 
 mod app_environment;
 use crate::app_environment::AppEnvironment;
@@ -11,10 +17,9 @@ mod app;
 use crate::app::*;
 use crate::app::camera::Camera;
 
+
 mod physics;
 use physics::Body;
-
-use std::time::Instant;
 
 enum SpacePrograms {
     CreateBodies,
@@ -44,9 +49,13 @@ struct App {
 
     example_program: SpacePrograms,
 
+    keys: HashSet<KeyCode>,
+    last_mouse_position: Option<(f64, f64)>,
+
     last_fps_update: Instant,
     frame_count: u32,
     fps: u32,
+    last_frame: Instant,
 }
 
 impl App {
@@ -62,7 +71,7 @@ impl App {
             radius: 0.5,
         });
 
-        for i in 0..200 {
+        for i in 0..2 {
             let angle = i as f32 * 0.01;
             let radius = 10.0 + i as f32 * 0.01;
 
@@ -92,6 +101,9 @@ impl App {
             fovy: 45.0_f32.to_radians(),
             znear: 0.1,
             zfar: 1000.0,
+
+            yaw: -90.0_f32.to_radians(),
+            pitch: 0.0,
         };
 
 
@@ -106,6 +118,9 @@ impl App {
             last_fps_update: Instant::now(),
             frame_count: 0,
             fps: 0,
+            keys: HashSet::new(),
+            last_frame: Instant::now(),
+            last_mouse_position: None,
         }
     }
 }
@@ -114,9 +129,27 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.environment = Some(AppEnvironment::new(&event_loop, self.window_name.clone(), self.window_size));
         self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies, &self.camera));
-        
         // add queue if using write_buffer() example
         // self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.environment.as_ref().unwrap().queue));
+    }
+
+    fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
+        match event {
+            winit::event::DeviceEvent::MouseMotion { delta } => {
+
+                let sensitivity = 0.002;
+
+                self.camera.yaw += delta.0 as f32 * sensitivity;
+                self.camera.pitch -= delta.1 as f32 * sensitivity;
+
+                self.camera.pitch = self.camera.pitch.clamp(
+                    -1.5,
+                    1.5
+                );
+            }
+
+            _ => {}
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -124,7 +157,41 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             },
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let winit::keyboard::PhysicalKey::Code(key) = event.physical_key {
+                    if event.state.is_pressed() {
+                        self.keys.insert(key);
+                    } else {
+                        self.keys.remove(&key);
+                    }
+                }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+
+                if let Some((last_x, last_y)) = self.last_mouse_position {
+
+                    let dx = position.x - last_x;
+                    let dy = position.y - last_y;
+
+                    let sensitivity = 0.002;
+
+                    self.camera.yaw += dx as f32 * sensitivity;
+                    self.camera.pitch -= dy as f32 * sensitivity;
+
+                    // prevent flipping upside down
+                    self.camera.pitch = self.camera.pitch.clamp(
+                        -1.5,
+                        1.5
+                    );
+                }
+
+                self.last_mouse_position = Some((position.x, position.y));
+            }
             WindowEvent::RedrawRequested => {
+                let now = Instant::now();
+                let dt = now.duration_since(self.last_frame).as_secs_f32();
+                self.last_frame = now;
+
                 self.environment.as_mut().unwrap().window.request_redraw();
                 
                 self.frame_count += 1;
@@ -156,6 +223,36 @@ impl ApplicationHandler for App {
                 );
 
                 let app_window = self.environment.as_ref().unwrap();
+
+                let speed = 2.5;
+                let right = self.camera
+                    .direction()
+                    .cross(self.camera.up)
+                    .normalize();
+                let up = self.camera.up.normalize();
+                if self.keys.contains(&KeyCode::KeyW) {
+                    self.camera.position += self.camera.direction() * speed * dt;
+                }
+
+                if self.keys.contains(&KeyCode::KeyS) {
+                    self.camera.position -= self.camera.direction() * speed * dt;
+                }
+
+                if self.keys.contains(&KeyCode::KeyA) {
+                    self.camera.position -= right * speed * dt;
+                }
+
+                if self.keys.contains(&KeyCode::KeyD) {
+                    self.camera.position += right * speed * dt;
+                }
+
+                if self.keys.contains(&KeyCode::Space) {
+                    self.camera.position += up * speed * dt;
+                }
+
+                if self.keys.contains(&KeyCode::ShiftLeft) || self.keys.contains(&KeyCode::ShiftRight){
+                    self.camera.position -= up * speed * dt;
+                }
 
                 self.engine
                     .as_ref()
