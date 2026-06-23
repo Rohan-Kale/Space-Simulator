@@ -1,8 +1,7 @@
 use std::f32::consts::PI;
 
 use bytemuck::{Pod, Zeroable};
-use wgpu::{BufferDescriptor, VertexBufferLayout, naga::DerivativeAxis::Y, util::{BufferInitDescriptor, DeviceExt}, wgc::device::queue};
-use winit::dpi::Position;
+use wgpu::{VertexBufferLayout, util::{BufferInitDescriptor, DeviceExt}};
 
 use crate::physics::Body;
 

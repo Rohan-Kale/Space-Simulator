@@ -1,4 +1,3 @@
-const MAX_TRAIL: usize = 1000;
 pub struct Body {
     pub position: [f32; 3],
     pub velocity: [f32; 3],

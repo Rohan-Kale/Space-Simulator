@@ -1,6 +1,5 @@
 
 use winit::application::ApplicationHandler;
-use winit::event::MouseScrollDelta::{LineDelta, PixelDelta};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{WindowId};
@@ -15,7 +14,7 @@ use crate::app_environment::AppEnvironment;
 mod app;
 use crate::app::*;
 use crate::app::camera::Camera;
-
+use crate::app::trail::Trail;
 
 mod physics;
 use physics::Body;
@@ -55,6 +54,8 @@ struct App {
     frame_count: u32,
     fps: u32,
     last_frame: Instant,
+
+    trails: Vec<Trail>,
 }
 
 impl App {
@@ -131,6 +132,7 @@ impl App {
             keys: HashSet::new(),
             last_frame: Instant::now(),
             last_mouse_position: None,
+            trails: Vec::new(),
         }
     }
 }
@@ -138,6 +140,16 @@ impl App {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.environment = Some(AppEnvironment::new(&event_loop, self.window_name.clone(), self.window_size));
+
+        let device = &self.environment
+            .as_ref()
+            .unwrap()
+            .device;
+
+        for _ in &self.bodies {
+            self.trails.push(Trail::new(device));
+        }
+
         self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies, &self.camera));
         
         // add queue if using write_buffer() example
@@ -237,7 +249,17 @@ impl ApplicationHandler for App {
 
                 let physics_start = Instant::now();
 
+                let app_window = self.environment.as_ref().unwrap();
+
                 physics::update_bodies(&mut self.bodies, 0.001);
+
+                for (i, body) in self.bodies.iter().enumerate() {
+                    self.trails[i].update(
+                        &app_window.queue,
+                        glam::Vec3::from(body.position)
+                    );
+
+                }
 
                 let physics_ms = physics_start.elapsed().as_secs_f64() * 1000.0;
                 
@@ -247,8 +269,6 @@ impl ApplicationHandler for App {
                     self.bodies.len(),
                     physics_ms
                 );
-
-                let app_window = self.environment.as_ref().unwrap();
 
                 let speed = 2.5;
                 let right = self.camera
@@ -306,7 +326,7 @@ impl ApplicationHandler for App {
                 }; 
 
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                self.engine.as_mut().unwrap().render(&app_window.queue, &app_window.device, &view);
+                self.engine.as_mut().unwrap().render(&app_window.queue, &app_window.device, &view, &self.trails);
                 frame.present();
                 
             },

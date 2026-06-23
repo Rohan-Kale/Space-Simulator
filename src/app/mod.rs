@@ -5,18 +5,16 @@ use crate::{SpacePrograms, app::example_object::Object};
 
 use crate::physics::Body;
 
-pub mod trail;
-use crate::trail::Trail;
-
 pub mod camera;
 use crate::app::camera::{Camera, CameraUniform};
 use wgpu::util::DeviceExt;
 
 
-
+pub mod trail;
+use crate::app::trail::{Trail, TrailVertex};
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
-    // trail_pipeline: wgpu::RenderPipeline,
+    trail_pipeline: wgpu::RenderPipeline,
     example_object: Object,
     // trail_object: Trail,
 
@@ -166,8 +164,79 @@ impl AppGraphicsEngine {
             }
         ).create_view(&wgpu::TextureViewDescriptor::default());
 
+        let trail_shader =
+            device.create_shader_module(
+                include_wgsl!("../../resources/trail.wgsl")
+            );
+
+        let trail_pipeline =
+            device.create_render_pipeline(
+            &wgpu::RenderPipelineDescriptor {
+            label: Some("Trail Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &trail_shader,
+                entry_point: Some("vs_main"),
+                compilation_options:
+                    PipelineCompilationOptions::default(),
+                buffers: &[
+                    wgpu::VertexBufferLayout {
+                        array_stride:
+                            std::mem::size_of::<TrailVertex>()
+                            as u64,
+                        step_mode:
+                            wgpu::VertexStepMode::Vertex,
+                        attributes:&[
+                            wgpu::VertexAttribute {
+                                offset:0,
+                                shader_location:0,
+                                format: wgpu::VertexFormat::Float32x3,
+                            },
+                            wgpu::VertexAttribute {
+                                offset: std::mem::size_of::<[f32;3]>() as u64,
+                                shader_location: 1,
+                                format: wgpu::VertexFormat::Float32,
+                            }
+                        ],
+                    }
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module:&trail_shader,
+                entry_point:Some("fs_main"),
+                compilation_options:
+                    PipelineCompilationOptions::default(),
+                targets:&[
+                    Some(wgpu::ColorTargetState {
+                        format:config.format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask:wgpu::ColorWrites::ALL,
+                    })
+                ],
+            }),
+            primitive:wgpu::PrimitiveState {
+                topology:
+                wgpu::PrimitiveTopology::LineStrip,
+                ..Default::default()
+            },
+            depth_stencil: Some(
+                wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }
+            ),
+            multisample:
+            wgpu::MultisampleState::default(),
+            multiview_mask:None,
+            cache:None,
+            });
+
         Self {
             pipeline,
+            trail_pipeline,
             example_object,
             camera_buffer,
             camera_bind_group,
@@ -197,7 +266,7 @@ impl AppGraphicsEngine {
         );
     }
 
-    pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView) {
+    pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView, trails: &Vec<Trail>) {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
@@ -257,16 +326,31 @@ impl AppGraphicsEngine {
                 wgpu::IndexFormat::Uint32,
             );
             rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..self.example_object.instances);
+
+            // draw trails after sphere
+            rpass.set_pipeline(&self.trail_pipeline);
+
+            for trail in trails {
+                rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
+                rpass.draw(0..trail.num_vertices, 0..1);
+            }
+
         } else {
             println!(
                 "draw {} vertices, {} instances",
                 self.example_object.num_to_draw, self.example_object.instances
             );
             
-            rpass.draw(
-                0..self.example_object.num_to_draw,
-                0..self.example_object.instances,
-            );
+            rpass.draw(0..self.example_object.num_to_draw, 0..self.example_object.instances,);
+
+            // draw trails after sphere
+            rpass.set_pipeline(&self.trail_pipeline);
+
+            for trail in trails {
+                rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
+                rpass.draw(0..trail.num_vertices, 0..1);
+            }
+
         }
 
         drop(rpass);
