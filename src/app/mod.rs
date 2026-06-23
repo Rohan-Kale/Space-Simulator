@@ -5,17 +5,25 @@ use crate::{SpacePrograms, app::example_object::Object};
 
 use crate::physics::Body;
 
+pub mod trail;
+use crate::trail::Trail;
+
 pub mod camera;
 use crate::app::camera::{Camera, CameraUniform};
 use wgpu::util::DeviceExt;
 
 
+
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
+    // trail_pipeline: wgpu::RenderPipeline,
     example_object: Object,
+    // trail_object: Trail,
 
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+
+    depth_texture: wgpu::TextureView,
 }
 
 impl AppGraphicsEngine {
@@ -122,7 +130,15 @@ impl AppGraphicsEngine {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(
+                wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }
+            ),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -133,11 +149,29 @@ impl AppGraphicsEngine {
             cache: None,
         });
 
+        let depth_texture = device.create_texture(
+            &wgpu::TextureDescriptor {
+                label: Some("Depth Texture"),
+                size: wgpu::Extent3d {
+                    width: config.width,
+                    height: config.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            }
+        ).create_view(&wgpu::TextureViewDescriptor::default());
+
         Self {
             pipeline,
             example_object,
             camera_buffer,
             camera_bind_group,
+            depth_texture,
         }
     }
 
@@ -184,7 +218,18 @@ impl AppGraphicsEngine {
                 },
                 depth_slice: None,
             })],
-            depth_stencil_attachment: None,
+            depth_stencil_attachment: Some(
+                wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture,
+                    depth_ops: Some(
+                        wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }
+                    ),
+                    stencil_ops: None,
+                }
+            ),
             occlusion_query_set: None,
             timestamp_writes: None,
             multiview_mask: None,
