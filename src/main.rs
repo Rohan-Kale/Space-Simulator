@@ -30,7 +30,7 @@ fn main() {
 
     let example_program = SpacePrograms::CreateBodies;
 
-    let mut app = App::new("Vertex Buffer Example".to_string(), (600, 600), example_program);
+    let mut app = App::new("Vertex Buffer Example".to_string(), (1280, 720), example_program);
     let _ = event_loop.run_app(&mut app);
 }
 
@@ -79,7 +79,7 @@ impl App {
             radius: 0.5,
         });
 
-        // for i in 0..2 {
+        // for i in 0..5000 {
         //     let angle = i as f32 * 0.2;
         //     let radius = 10.0 + (i as f32 * 0.05);
 

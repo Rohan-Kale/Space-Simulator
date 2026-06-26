@@ -12,16 +12,23 @@ use wgpu::util::DeviceExt;
 
 pub mod trail;
 use crate::app::trail::{Trail, TrailVertex};
+
+pub mod starfield;
+use crate::app::starfield::{Starfield, StarVertex};
+
+
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
     trail_pipeline: wgpu::RenderPipeline,
     example_object: Object,
-    // trail_object: Trail,
 
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture: wgpu::TextureView,
+
+    starfield: Starfield,
+    star_pipeline: wgpu::RenderPipeline,
 }
 
 impl AppGraphicsEngine {
@@ -234,6 +241,76 @@ impl AppGraphicsEngine {
             cache:None,
             });
 
+            let starfield = Starfield::new(device);
+
+            let star_shader =
+            device.create_shader_module(include_wgsl!("../../resources/star.wgsl"));
+
+            let star_pipeline =
+                device.create_render_pipeline(
+                    &wgpu::RenderPipelineDescriptor {
+                        label: Some("Star Pipeline"),
+
+                        layout: Some(&pipeline_layout),
+
+                        vertex: wgpu::VertexState {
+                            module: &star_shader,
+                            entry_point: Some("vs_main"),
+                            compilation_options:
+                                PipelineCompilationOptions::default(),
+
+                            buffers: &[
+                                wgpu::VertexBufferLayout {
+                                    array_stride:
+                                        std::mem::size_of::<StarVertex>() as u64,
+                                    step_mode:
+                                        wgpu::VertexStepMode::Vertex,
+                                    attributes:&[
+                                        wgpu::VertexAttribute {
+                                            offset:0,
+                                            shader_location:0,
+                                            format:
+                                            wgpu::VertexFormat::Float32x3,
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                        fragment: Some(wgpu::FragmentState {
+                            module:&star_shader,
+                            entry_point:Some("fs_main"),
+                            compilation_options:
+                                PipelineCompilationOptions::default(),
+                            targets:&[
+                                Some(wgpu::ColorTargetState {
+                                    format:config.format,
+                                    blend:Some(wgpu::BlendState::REPLACE),
+                                    write_mask:
+                                    wgpu::ColorWrites::ALL,
+                                })
+                            ],
+                        }),
+                        primitive: wgpu::PrimitiveState {
+                            topology:
+                                wgpu::PrimitiveTopology::PointList,
+
+                            ..Default::default()
+                        },
+                        depth_stencil: Some(
+                            wgpu::DepthStencilState {
+                                format: wgpu::TextureFormat::Depth32Float,
+                                depth_write_enabled: false,
+                                depth_compare: wgpu::CompareFunction::Always,
+                                stencil: Default::default(),
+                                bias: Default::default(),
+                            }
+                        ),
+                        multisample: wgpu::MultisampleState::default(),
+                        multiview_mask:None,
+                        cache:None,
+                    }
+                );
+
         Self {
             pipeline,
             trail_pipeline,
@@ -241,6 +318,8 @@ impl AppGraphicsEngine {
             camera_buffer,
             camera_bind_group,
             depth_texture,
+            starfield,
+            star_pipeline
         }
     }
 
@@ -312,6 +391,21 @@ impl AppGraphicsEngine {
             &[],
         );
 
+        // create starfield pipeline and draw starfield
+        rpass.set_pipeline(&self.star_pipeline);
+        rpass.set_vertex_buffer(0, self.starfield.vertex_buffer.slice(..));
+        rpass.draw(0..self.starfield.num_stars, 0..1);
+
+        // IMPORTANT: restore planet pipeline
+        rpass.set_pipeline(&self.pipeline);
+
+        rpass.set_bind_group(
+            0,
+            &self.camera_bind_group,
+            &[],
+        );
+
+
         // square mesh
         rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
 
@@ -321,10 +415,7 @@ impl AppGraphicsEngine {
         // If we have an index buffer, draw using indexing, if we don't, draw using vertices
         if self.example_object.index_buffer.is_some() {
             //println!("num to draw: {}, instances: {}", self.example_object.num_to_draw, self.example_object.instances);
-            rpass.set_index_buffer(
-                self.example_object.index_buffer.as_ref().unwrap().slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
+            rpass.set_index_buffer(self.example_object.index_buffer.as_ref().unwrap().slice(..), wgpu::IndexFormat::Uint32);
             rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..self.example_object.instances);
 
             // draw trails after sphere
