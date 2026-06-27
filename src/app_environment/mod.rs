@@ -24,7 +24,8 @@ impl AppEnvironment {
         let window = {
             let attributes = Window::default_attributes()
                 .with_inner_size(window_size)
-                .with_title(format!("{} {}x{}", window_name, window_size.width, window_size.height));  
+                .with_title(format!("{} {}x{}", window_name, window_size.width, window_size.height))
+                .with_resizable(true);  
             Arc::new(event_loop.create_window(attributes).unwrap())
         };
 

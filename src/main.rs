@@ -55,7 +55,9 @@ struct App {
     fps: u32,
     last_frame: Instant,
 
-    trails: Vec<Trail>,
+    trail: Option<Trail>,
+    trail_ready: bool,
+    trail_timer: f32,
 }
 
 impl App {
@@ -67,7 +69,7 @@ impl App {
             position: [-2.0, 0.0, 0.0],
             velocity: [0.0, -2.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 50.0,
+            mass: 100.0,
             radius: 0.5,
         });
 
@@ -75,34 +77,34 @@ impl App {
             position: [2.0, 0.0, 0.0],
             velocity: [0.0, 2.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 50.0,
+            mass: 100.0,
             radius: 0.5,
         });
 
-        // for i in 0..5000 {
-        //     let angle = i as f32 * 0.2;
-        //     let radius = 10.0 + (i as f32 * 0.05);
+        for i in 0..10000 {
+            let angle = i as f32 * 0.2;
+            let radius = 10.0 + (i as f32 * 0.05);
 
-        //     bodies.push(Body {
-        //         position: [
-        //             radius * angle.cos(),
-        //             radius * angle.sin(),
-        //             0.0,
-        //         ],
+            bodies.push(Body {
+                position: [
+                    radius * angle.cos(),
+                    radius * angle.sin(),
+                    0.0,
+                ],
 
-        //         velocity: [
-        //             -angle.sin() * 0.5,
-        //             angle.cos() * 0.5,
-        //             0.0,
-        //         ],
+                velocity: [
+                    -angle.sin() * 0.5,
+                    angle.cos() * 0.5,
+                    0.0,
+                ],
 
-        //         acceleration: [0.0,0.0,0.0],
+                acceleration: [0.0,0.0,0.0],
 
-        //         mass: 0.01,
+                mass: 0.01,
 
-        //         radius: 0.05,
-        //     });
-        // }
+                radius: 0.5,
+            });
+        }
 
         let camera = Camera {
             position: glam::vec3(0.0, 0.0, 10.0),
@@ -132,7 +134,9 @@ impl App {
             keys: HashSet::new(),
             last_frame: Instant::now(),
             last_mouse_position: None,
-            trails: Vec::new(),
+            trail: None,
+            trail_ready: false,
+            trail_timer: 0.0,
         }
     }
 }
@@ -146,9 +150,7 @@ impl ApplicationHandler for App {
             .unwrap()
             .device;
 
-        for _ in &self.bodies {
-            self.trails.push(Trail::new(device));
-        }
+        self.trail = Some(Trail::new(device, self.bodies.len()));
 
         self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies, &self.camera));
         
@@ -229,7 +231,7 @@ impl ApplicationHandler for App {
                 let now = Instant::now();
                 let dt = now.duration_since(self.last_frame).as_secs_f32();
                 self.last_frame = now;
-
+                self.trail_timer += dt;
                 self.environment.as_mut().unwrap().window.request_redraw();
                 
                 self.frame_count += 1;
@@ -239,11 +241,11 @@ impl ApplicationHandler for App {
                     self.frame_count = 0;
                     self.last_fps_update = Instant::now();
 
-                    println!(
-                        "FPS: {} | Bodies: {}",
-                        self.fps,
-                        self.bodies.len()
-                    );
+                    // println!(
+                    //     "FPS: {} | Bodies: {}",
+                    //     self.fps,
+                    //     self.bodies.len()
+                    // );
                 }
                 
 
@@ -251,22 +253,23 @@ impl ApplicationHandler for App {
 
                 let app_window = self.environment.as_ref().unwrap();
 
-                physics::update_bodies(&mut self.bodies, 0.001);
+                //physics::update_bodies(&mut self.bodies, 0.001);
 
-                for (i, body) in self.bodies.iter().enumerate() {
-                    self.trails[i].update(
-                        &app_window.queue,
-                        glam::Vec3::from(body.position)
-                    );
-
-                }
+                // if self.trail_timer >= 0.05 && self.trail_ready{
+                //     if let Some(engine) = &self.engine {
+                //         let positions = engine.get_positions(&app_window.device);
+                //         if let Some(trail) = &mut self.trail {
+                //             trail.update(&app_window.queue, &positions);
+                //         }
+                //     }
+                //     self.trail_timer = 0.0;
+                // }
 
                 let physics_ms = physics_start.elapsed().as_secs_f64() * 1000.0;
                 
                 println!(
-                    "FPS: {} | Bodies: {} | Physics: {:.3} ms",
+                    "FPS: {} | Physics: {:.3} ms",
                     self.fps,
-                    self.bodies.len(),
                     physics_ms
                 );
 
@@ -309,13 +312,13 @@ impl ApplicationHandler for App {
                     );
 
                 // Send new body positions to GPU
-                self.engine
-                    .as_ref()
-                    .unwrap()
-                    .update_instances(
-                        &app_window.queue,
-                        &self.bodies
-                    );
+                // self.engine
+                //     .as_ref()
+                //     .unwrap()
+                //     .update_instances(
+                //         &app_window.queue,
+                //         &self.bodies
+                //     );
 
                 let frame = match app_window.surface.get_current_texture() {
                     Ok(frame) => frame,
@@ -326,7 +329,8 @@ impl ApplicationHandler for App {
                 }; 
 
                 let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-                self.engine.as_mut().unwrap().render(&app_window.queue, &app_window.device, &view, &self.trails);
+                self.engine.as_mut().unwrap().render(&app_window.queue, &app_window.device, &view, &self.trail);
+                self.trail_ready = true;
                 frame.present();
                 
             },

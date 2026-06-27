@@ -3,7 +3,7 @@ use wgpu::{PipelineCompilationOptions, include_wgsl};
 pub mod example_object;
 use crate::{SpacePrograms, app::example_object::Object};
 
-use crate::physics::Body;
+use crate::physics::{Body, GpuBody};
 
 pub mod camera;
 use crate::app::camera::{Camera, CameraUniform};
@@ -15,7 +15,6 @@ use crate::app::trail::{Trail, TrailVertex};
 
 pub mod starfield;
 use crate::app::starfield::{Starfield, StarVertex};
-
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
@@ -29,6 +28,11 @@ pub struct AppGraphicsEngine {
 
     starfield: Starfield,
     star_pipeline: wgpu::RenderPipeline,
+
+    gravity_pipeline: wgpu::ComputePipeline,
+    gravity_bind_group: wgpu::BindGroup,
+    body_buffer: wgpu::Buffer,
+    body_read_buffer: wgpu::Buffer,
 }
 
 impl AppGraphicsEngine {
@@ -311,6 +315,88 @@ impl AppGraphicsEngine {
                     }
                 );
 
+                let gpu_bodies: Vec<GpuBody> = bodies
+                    .iter()
+                    .map(|b| GpuBody::from(b))
+                    .collect();
+
+                let body_buffer = device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor {
+                        label: Some("Body Storage Buffer"),
+                        contents: bytemuck::cast_slice(&gpu_bodies),
+                        usage:
+                            wgpu::BufferUsages::STORAGE |
+                            wgpu::BufferUsages::VERTEX |
+                            wgpu::BufferUsages::COPY_DST |
+                            wgpu::BufferUsages::COPY_SRC,
+                    }
+                );
+
+                let gravity_shader = device.create_shader_module(include_wgsl!("../../resources/gravity.wgsl"));
+                let gravity_layout = device.create_bind_group_layout(
+                    &wgpu::BindGroupLayoutDescriptor {
+                        label: Some("gravity layout"),
+                        entries: &[
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::COMPUTE,
+                                ty: wgpu::BindingType::Buffer {
+                                    ty: wgpu::BufferBindingType::Storage {
+                                        read_only: false,
+                                    },
+                                    has_dynamic_offset: false,
+                                    min_binding_size: None,
+                                },
+                                count: None,
+                            }
+                        ],
+                    }
+                );
+
+                let gravity_bind_group = device.create_bind_group(
+                    &wgpu::BindGroupDescriptor {
+                        label: Some("gravity bind group"),
+                        layout: &gravity_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: body_buffer.as_entire_binding(),
+                            }
+                        ],
+                    }
+                );
+
+                let gravity_pipeline = device.create_compute_pipeline(
+                &wgpu::ComputePipelineDescriptor {
+                    label: Some("Gravity Compute"),
+                    layout: Some(
+                        &device.create_pipeline_layout(
+                            &wgpu::PipelineLayoutDescriptor {
+                                label: None,
+                                bind_group_layouts: &[&gravity_layout],
+                                immediate_size: 0,
+                            }
+                        )
+                    ),
+                    module: &gravity_shader,
+                    entry_point: Some("main"),
+                    compilation_options:
+                        PipelineCompilationOptions::default(),
+                    cache: None,
+                }
+            );
+
+            let body_read_buffer = device.create_buffer(
+                &wgpu::BufferDescriptor {
+                    label: Some("Body Read Buffer"),
+                    size: (std::mem::size_of::<GpuBody>() * bodies.len()) as u64,
+                    usage: 
+                        wgpu::BufferUsages::COPY_DST |
+                        wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                }
+            );
+
         Self {
             pipeline,
             trail_pipeline,
@@ -319,16 +405,12 @@ impl AppGraphicsEngine {
             camera_bind_group,
             depth_texture,
             starfield,
-            star_pipeline
+            star_pipeline,
+            gravity_pipeline,
+            gravity_bind_group,
+            body_buffer,
+            body_read_buffer,
         }
-    }
-
-    pub fn update_instances(
-        &self,
-        queue: &wgpu::Queue,
-        bodies: &Vec<Body>,
-    ) {
-        self.example_object.update_instances(queue, bodies);
     }
 
     pub fn update_camera(&self, queue: &wgpu::Queue, camera: &Camera,) {
@@ -345,10 +427,60 @@ impl AppGraphicsEngine {
         );
     }
 
-    pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView, trails: &Vec<Trail>) {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Render Encoder"),
-        });
+    pub fn get_positions(&self, device: &wgpu::Device) -> Vec<glam::Vec3> {
+        let slice = self.body_read_buffer.slice(..);
+
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+
+        device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None});
+
+        let data = slice.get_mapped_range();
+
+        let bodies: &[GpuBody] =
+            bytemuck::cast_slice(&data);
+
+        let positions =
+            bodies.iter()
+            .map(|b| {
+                glam::Vec3::new(
+                    b.position[0],
+                    b.position[1],
+                    b.position[2],
+                )
+            })
+            .collect();
+
+        drop(data);
+
+        self.body_read_buffer.unmap();
+
+        positions
+    }
+
+    pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView, trail: &Option<Trail>) {
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            }
+        );
+
+        //run the gravity compute shader
+        {
+            let mut cpass = encoder.begin_compute_pass(
+                &wgpu::ComputePassDescriptor {
+                    label: Some("Gravity Compute Pass"),
+                    timestamp_writes: None,
+                }
+            );
+
+            cpass.set_pipeline(&self.gravity_pipeline);
+            cpass.set_bind_group(0, &self.gravity_bind_group, &[]);
+
+            let workgroups = (self.example_object.instances + 63) / 64;
+            cpass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        encoder.copy_buffer_to_buffer(&self.body_buffer, 0, &self.body_read_buffer, 0, self.body_buffer.size());
 
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
@@ -410,21 +542,13 @@ impl AppGraphicsEngine {
         rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
 
         // body positions + radius
-        rpass.set_vertex_buffer(1, self.example_object.instance_buffer.slice(..));
+        rpass.set_vertex_buffer(1, self.body_buffer.slice(..));
 
         // If we have an index buffer, draw using indexing, if we don't, draw using vertices
         if self.example_object.index_buffer.is_some() {
             //println!("num to draw: {}, instances: {}", self.example_object.num_to_draw, self.example_object.instances);
             rpass.set_index_buffer(self.example_object.index_buffer.as_ref().unwrap().slice(..), wgpu::IndexFormat::Uint32);
             rpass.draw_indexed(0..self.example_object.num_to_draw, 0, 0..self.example_object.instances);
-
-            // draw trails after sphere
-            rpass.set_pipeline(&self.trail_pipeline);
-
-            for trail in trails {
-                rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
-                rpass.draw(0..trail.num_vertices, 0..1);
-            }
 
         } else {
             println!(
@@ -437,15 +561,25 @@ impl AppGraphicsEngine {
             // draw trails after sphere
             rpass.set_pipeline(&self.trail_pipeline);
 
-            for trail in trails {
+            if let Some(trail) = trail {
                 rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
                 rpass.draw(0..trail.num_vertices, 0..1);
             }
+        }
+        // draw trails AFTER planets
+        rpass.set_pipeline(&self.trail_pipeline);
 
+        if let Some(trail) = trail {
+            rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
+
+            for range in &trail.ranges {
+                rpass.draw(range.clone(), 0..1);
+            }
         }
 
         drop(rpass);
 
         queue.submit(Some(encoder.finish()));
     }
+
 }

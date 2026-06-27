@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bytemuck::{Pod, Zeroable};
 use wgpu::{VertexBufferLayout, util::{BufferInitDescriptor, DeviceExt}};
 
-use crate::physics::Body;
+use crate::physics::{Body, GpuBody};
 
 #[repr(C)]
 #[derive(Copy, Clone, Zeroable, Pod)]
@@ -152,18 +152,18 @@ impl Object {
 
 
         let instance_layout = wgpu::VertexBufferLayout {
-            array_stride: (std::mem::size_of::<f32>() * 4) as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<GpuBody>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x3, // position
+                    format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32;3]>() as u64,
+                    offset: 16 * 3 + 4, 
                     shader_location: 4,
-                    format: wgpu::VertexFormat::Float32, // radius
+                    format: wgpu::VertexFormat::Float32,
                 },
             ],
         };
