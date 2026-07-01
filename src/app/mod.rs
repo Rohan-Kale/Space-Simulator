@@ -108,7 +108,7 @@ impl AppGraphicsEngine {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("triangle_pipeline_layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[Some(&camera_bind_group_layout)],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -142,8 +142,8 @@ impl AppGraphicsEngine {
             depth_stencil: Some(
                 wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }
@@ -233,8 +233,8 @@ impl AppGraphicsEngine {
             depth_stencil: Some(
                 wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }
@@ -303,8 +303,8 @@ impl AppGraphicsEngine {
                         depth_stencil: Some(
                             wgpu::DepthStencilState {
                                 format: wgpu::TextureFormat::Depth32Float,
-                                depth_write_enabled: false,
-                                depth_compare: wgpu::CompareFunction::Always,
+                                depth_write_enabled: Some(false),
+                                depth_compare: Some(wgpu::CompareFunction::Always),
                                 stencil: Default::default(),
                                 bias: Default::default(),
                             }
@@ -373,7 +373,7 @@ impl AppGraphicsEngine {
                         &device.create_pipeline_layout(
                             &wgpu::PipelineLayoutDescriptor {
                                 label: None,
-                                bind_group_layouts: &[&gravity_layout],
+                                bind_group_layouts: &[Some(&gravity_layout)],
                                 immediate_size: 0,
                             }
                         )

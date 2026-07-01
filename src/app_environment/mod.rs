@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use pollster::block_on;
+use wgpu::naga::compact::KeepUnused::No;
 use winit::{dpi::LogicalSize, event_loop::ActiveEventLoop, window::Window};
 
 
@@ -15,9 +16,12 @@ pub struct AppEnvironment {
 
 impl AppEnvironment {
     pub fn new(event_loop: &ActiveEventLoop, window_name: String, window_size: (i32, i32)) -> Self {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
-            ..Default::default()
+            flags: wgpu::InstanceFlags::default(),
+            backend_options: wgpu::BackendOptions::default(),
+            display: None,
+            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
         });
 
         let window_size = LogicalSize::new(window_size.0, window_size.1);
