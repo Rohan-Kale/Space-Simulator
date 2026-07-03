@@ -32,6 +32,13 @@ pub struct GpuBody {
     pub _padding: [f32; 2],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct SimulationParams {
+    pub dt: f32,
+     pub _padding: [f32; 7],
+}
+
 impl From<&Body> for GpuBody {
     fn from(body: &Body) -> Self {
         Self {

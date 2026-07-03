@@ -5,6 +5,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{WindowId};
 use winit::keyboard::KeyCode;
 
+use glam::Vec3;
+
 use std::time::Instant;
 use std::collections::HashSet;
 
@@ -51,7 +53,6 @@ struct App {
     example_program: SpacePrograms,
 
     keys: HashSet<KeyCode>,
-    last_mouse_position: Option<(f64, f64)>,
 
     last_fps_update: Instant,
     frame_count: u32,
@@ -64,6 +65,8 @@ struct App {
 
     ui: UiState,
     ui_renderer: Option<UiRenderer>,
+
+    camera_rotating: bool,
 }
 
 impl App {
@@ -139,19 +142,19 @@ impl App {
             fps: 0,
             keys: HashSet::new(),
             last_frame: Instant::now(),
-            last_mouse_position: None,
             trail: None,
             trail_ready: false,
             trail_timer: 0.0,
             ui: UiState::new(),
             ui_renderer: None,
+            camera_rotating: false, 
         }
     }
 
     fn update(&mut self, dt: f32) {
         self.trail_timer += dt;
 
-        let scaled_dt = dt * self.ui.time_scale;
+        let simulation_dt = dt * self.ui.time_scale;
 
         if self.ui.paused {
             return;
@@ -169,40 +172,47 @@ impl App {
 
         let physics_ms = physics_start.elapsed().as_secs_f64() * 1000.0;
 
-        // println!(
-        //     "FPS: {} | Physics: {:.3} ms",
-        //     self.fps,
-        //     physics_ms
-        // );
-
         let speed = 2.5;
         let right = self.camera.direction().cross(self.camera.up).normalize();
         let up = self.camera.up.normalize();
 
+        if self.trail_ready {
+            if let (Some(trail), Some(engine)) = (&mut self.trail, &self.engine) {
+                let positions = engine.get_positions(
+                    &self.environment.as_ref().unwrap().device
+                );
+
+                trail.update(
+                    &self.environment.as_ref().unwrap().queue,
+                    &positions,
+                );
+            }
+        }
+
         if self.keys.contains(&KeyCode::KeyW) {
-            self.camera.position += self.camera.direction() * speed * scaled_dt;
+            self.camera.position += self.camera.direction() * speed * dt;
         }
 
         if self.keys.contains(&KeyCode::KeyS) {
-            self.camera.position -= self.camera.direction() * speed * scaled_dt;
+            self.camera.position -= self.camera.direction() * speed * dt;
         }
 
         if self.keys.contains(&KeyCode::KeyA) {
-            self.camera.position -= right * speed * scaled_dt;
+            self.camera.position -= right * speed * dt;
         }
 
         if self.keys.contains(&KeyCode::KeyD) {
-            self.camera.position += right * speed * scaled_dt;
+            self.camera.position += right * speed * dt;
         }
 
         if self.keys.contains(&KeyCode::Space) {
-            self.camera.position += up * speed * scaled_dt;
+            self.camera.position += up * speed * dt;
         }
 
         if self.keys.contains(&KeyCode::ShiftLeft)
             || self.keys.contains(&KeyCode::ShiftRight)
         {
-            self.camera.position -= up * speed * scaled_dt;
+            self.camera.position -= up * speed * dt;
         }
     }
 
@@ -262,13 +272,7 @@ impl App {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
 
-        let trail = if self.ui.show_trails {
-            &self.trail
-        } else {
-            &None
-        };
-
-
+        let trail = self.ui.show_trails.then_some(self.trail.as_ref()).flatten();
         self.engine
             .as_mut()
             .unwrap()
@@ -277,9 +281,9 @@ impl App {
                 &app_window.device,
                 &view,
                 trail,
+                self.ui.time_scale * 0.001,
+                self.ui.show_velocity_vectors,
             );
-
-        let shapes_len = full_output.shapes.len();
 
         let paint_jobs =
             self.ui_renderer
@@ -404,10 +408,6 @@ impl App {
                         self.bodies.len()
                     ));
                     ui.separator();
-                    ui.checkbox(
-                        &mut self.ui.paused,
-                        "Paused"
-                    );
                     ui.add(
                         egui::Slider::new(
                             &mut self.ui.time_scale,
@@ -463,6 +463,9 @@ impl ApplicationHandler for App {
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: winit::event::DeviceId, event: winit::event::DeviceEvent) {
         match event {
             winit::event::DeviceEvent::MouseMotion { delta } => {
+                if !self.camera_rotating {
+                    return;
+                }
 
                 let sensitivity = 0.002;
 
@@ -474,7 +477,6 @@ impl ApplicationHandler for App {
                     1.5
                 );
             }
-
             _ => {}
         }
     }
@@ -482,10 +484,14 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent)
     {
         if let Some(ui) = self.ui_renderer.as_mut() {
-            ui.state.on_window_event(
+            let response = ui.state.on_window_event(
                 &self.environment.as_ref().unwrap().window,
                 &event,
             );
+
+            if response.consumed {
+                return;
+            }
         }
 
         match event {
@@ -500,22 +506,13 @@ impl ApplicationHandler for App {
                         self.keys.remove(&key);
                     }
                 }
-
-                self.ui_renderer
-                    .as_mut()
-                    .unwrap()
-                    .state
-                    .on_window_event(
-                        &self.environment.as_ref().unwrap().window,
-                        &WindowEvent::KeyboardInput {
-                            device_id: winit::event::DeviceId::dummy(),
-                            event: key_event,
-                            is_synthetic: false,
-                        },
-                    );
-
             }
-            WindowEvent::MouseWheel { device_id, delta, phase } => {
+            WindowEvent::MouseInput { state, button, .. } => {
+                if button == winit::event::MouseButton::Right {
+                    self.camera_rotating = state.is_pressed();
+                }
+            }
+            WindowEvent::MouseWheel {device_id: _,  delta, phase: _ } => {
                 let zoom_speed = 0.05;
 
                 match delta {
@@ -529,27 +526,6 @@ impl ApplicationHandler for App {
 
                 //prevent camera from tweaking out
                 self.camera.fovy = self.camera.fovy.clamp(10.0_f32.to_radians(), 90.0_f32.to_radians());
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-
-                if let Some((last_x, last_y)) = self.last_mouse_position {
-
-                    let dx = position.x - last_x;
-                    let dy = position.y - last_y;
-
-                    let sensitivity = 0.002;
-
-                    self.camera.yaw += dx as f32 * sensitivity;
-                    self.camera.pitch -= dy as f32 * sensitivity;
-
-                    // prevent flipping upside down
-                    self.camera.pitch = self.camera.pitch.clamp(
-                        -1.5,
-                        1.5
-                    );
-                }
-
-                self.last_mouse_position = Some((position.x, position.y));
             }
             WindowEvent::RedrawRequested => {
                 let now = Instant::now();

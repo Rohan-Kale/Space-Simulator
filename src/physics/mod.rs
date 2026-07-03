@@ -1,4 +1,4 @@
 pub mod body;
-pub use body::{Body, GpuBody, update_bodies};
+pub use body::{Body, GpuBody, SimulationParams};
 
 pub mod octree;

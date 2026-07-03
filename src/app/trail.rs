@@ -38,7 +38,7 @@ impl Trail {
     }
 
     pub fn update(&mut self, queue: &wgpu::Queue, positions: &Vec<Vec3>) {
-        let trail_length = 25;
+        let trail_length = 200;
 
         for (i, pos) in positions.iter().enumerate() {
             if i >= self.points.len() {
@@ -51,21 +51,32 @@ impl Trail {
                 self.points[i].remove(0);
             }
         }
-        let mut vertices = Vec::new();
         self.ranges.clear();
 
+        let mut vertices = Vec::new();
         let mut offset = 0;
 
         for body_trail in &self.points {
-            for (index, (pos, _)) in body_trail.iter().enumerate() {
-                let alpha = index as f32 / body_trail.len() as f32;
-                vertices.push(TrailVertex {pos: pos.to_array(), alpha});
+            if body_trail.is_empty() {
+                continue;
+            }
+            let start = offset;
+
+            for (i, (pos, _)) in body_trail.iter().enumerate() {
+                let alpha = i as f32 / body_trail.len() as f32;
+
+                vertices.push(TrailVertex {
+                    pos: pos.to_array(),
+                    alpha,
+                });
+
+                offset += 1;
             }
 
-            self.ranges.push(offset..(offset + body_trail.len() as u32));
-
-            offset += body_trail.len() as u32;
+            let end = offset;
+            self.ranges.push(start..end);
         }
+
         queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
 
         self.num_vertices = vertices.len() as u32;

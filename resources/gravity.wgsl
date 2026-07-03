@@ -10,6 +10,15 @@ struct Body {
 @group(0) @binding(0)
 var<storage, read_write> bodies: array<Body>;
 
+struct SimulationParams {
+    dt: f32,
+    _padding: vec3<f32>,
+}
+
+@group(0) @binding(1)
+var<uniform> sim: SimulationParams;
+
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
@@ -29,9 +38,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         let force = bodies[j].mass / (dist * dist);
         acceleration += normalize(dir) * force;
     }
-    let new_velocity = bodies[i].velocity.xyz + acceleration * 0.001;
-    let new_position = bodies[i].position.xyz + new_velocity * 0.001;
-
+    let new_velocity = bodies[i].velocity.xyz + acceleration * sim.dt;
+    let new_position = bodies[i].position.xyz + new_velocity * sim.dt;
+    
     bodies[i].velocity = vec4<f32>(new_velocity, 0.0);
     bodies[i].position = vec4<f32>(new_position, 0.0);
 }
