@@ -1,5 +1,5 @@
 use crate::physics::Body;
-
+use crate::physics::gpu_octree::GpuOctreeNode;
 
 pub struct OctreeNode {
     // cube center
@@ -31,8 +31,14 @@ impl OctreeNode {
         }
     }
 
-    pub fn insert(&mut self, body_index: usize, bodies: &[Body]) {
+    pub fn insert(&mut self, body_index: usize, bodies: &[Body], depth: u32) {
         let position = bodies[body_index].position;
+
+        // Prevent infinite subdivision
+        if self.half_size < 0.0001 || depth > 32 {
+            self.body = Some(body_index);
+            return;
+        }
 
         //empty leaf
         if self.body.is_none() && self.children.iter().all(|c| c.is_none()) {
@@ -50,7 +56,7 @@ impl OctreeNode {
                 self.children[child]
                     .as_mut()
                     .unwrap()
-                    .insert(old_body, bodies);
+                    .insert(old_body, bodies, depth+1);
             }
         }
 
@@ -59,7 +65,7 @@ impl OctreeNode {
         self.children[child]
             .as_mut()
             .unwrap()
-            .insert(body_index, bodies);
+            .insert(body_index, bodies, depth+1);
     }
 
      fn subdivide(&mut self) {
@@ -199,4 +205,80 @@ impl OctreeNode {
         }
     }
 
+    pub fn flatten(&self, nodes: &mut Vec<GpuOctreeNode>) -> u32 {
+        // index this node will have in the GPU array
+        let index = nodes.len() as u32;
+
+        // Reserve space for this node
+        nodes.push(GpuOctreeNode {
+            center_of_mass: [
+                self.center_of_mass[0],
+                self.center_of_mass[1],
+                self.center_of_mass[2],
+                0.0,
+            ],
+
+            // xyz = center, w = half_size
+            center: [
+                self.center[0],
+                self.center[1],
+                self.center[2],
+                self.half_size,
+            ],
+
+            mass: self.mass,
+
+            is_leaf: if self.children.iter().all(|c| c.is_none()) {
+                1
+            } else {
+                0
+            },
+
+            body_index: self.body
+                .map(|b| b as u32)
+                .unwrap_or(u32::MAX),
+
+            _padding: 0,
+
+            children: [u32::MAX; 8],
+        });
+
+
+        // Recursively flatten children
+        let mut child_indices = [u32::MAX; 8];
+
+        for (i, child) in self.children.iter().enumerate() {
+            if let Some(child) = child {
+                child_indices[i] = child.flatten(nodes);
+            }
+        }
+
+
+        // Now that we know child indices, update this node
+        nodes[index as usize].children = child_indices;
+
+
+        index
+    }
+
+}
+
+
+pub fn build_gpu_octree(bodies: &[Body]) -> Vec<GpuOctreeNode> {
+    let mut tree = OctreeNode::new(
+        [0.0, 0.0, 0.0],
+        100.0,
+    );
+
+    for i in 0..bodies.len() {
+        tree.insert(i, bodies, 0);
+    }
+
+    tree.compute_center_of_mass(bodies);
+
+    let mut nodes = Vec::new();
+
+    tree.flatten(&mut nodes);
+
+    nodes
 }

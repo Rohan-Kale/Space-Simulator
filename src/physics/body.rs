@@ -1,4 +1,5 @@
 use crate::physics::octree::OctreeNode;
+use crate::physics::gpu_octree::GpuOctreeNode;
 use std::time::Instant;
 use bytemuck::{Pod, Zeroable};
 pub struct Body {
@@ -67,11 +68,30 @@ impl From<&Body> for GpuBody {
     }
 }
 
+pub fn build_gpu_octree(bodies: &[Body]) -> Vec<GpuOctreeNode> {
+    let mut tree = OctreeNode::new(
+        [0.0, 0.0, 0.0],
+        100.0
+    );
+
+    for i in 0..bodies.len() {
+        tree.insert(i, bodies, 0);
+    }
+
+    tree.compute_center_of_mass(bodies);
+
+    let mut nodes = Vec::new();
+
+    tree.flatten(&mut nodes);
+
+    nodes
+}
+
 pub fn update_bodies(bodies: &mut Vec<Body>, delta_time: f32) {
     //let start = Instant::now();
-    let mut tree = OctreeNode::new([0.0,0.0,0.0], 100.0);
+    let mut tree = OctreeNode::new([0.0, 0.0, 0.0], 1000.0);
     for i in 0..bodies.len() {
-        tree.insert(i, bodies);
+        tree.insert(i, bodies, 0);
     }
 
     tree.compute_center_of_mass(bodies);

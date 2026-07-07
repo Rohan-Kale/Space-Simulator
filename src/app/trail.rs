@@ -22,7 +22,7 @@ impl Trail {
             device.create_buffer(
                 &wgpu::BufferDescriptor {
                     label: Some("Trail Buffer"),
-                    size: 10 * 1024 * 1024,
+                    size: 64 * 1024 * 1024,
                     usage:
                         wgpu::BufferUsages::VERTEX |
                         wgpu::BufferUsages::COPY_DST,
@@ -76,6 +76,12 @@ impl Trail {
             let end = offset;
             self.ranges.push(start..end);
         }
+
+        // println!(
+        //     "trail upload {} bytes buffer {}",
+        //     bytemuck::cast_slice(vertices).len(),
+        //     self.vertex_buffer.size()
+        // );
 
         queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
 

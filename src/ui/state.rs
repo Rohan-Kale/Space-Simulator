@@ -5,6 +5,8 @@ pub struct UiState {
     pub show_trails: bool,
     pub show_octree: bool,
     pub show_velocity_vectors: bool,
+
+    pub theta: f32,
 }
 
 impl UiState {
@@ -13,6 +15,7 @@ impl UiState {
             // Simulation
             paused: false,
             time_scale: 1.0,
+            theta: 1.0,
             
             // Visualization
             show_trails: true,

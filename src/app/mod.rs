@@ -3,7 +3,7 @@ use wgpu::{PipelineCompilationOptions, include_wgsl};
 pub mod example_object;
 use crate::{SpacePrograms, app::example_object::Object};
 
-use crate::physics::{Body, GpuBody, SimulationParams};
+use crate::physics::{Body, GpuBody, SimulationParams, gpu_octree::GpuOctreeNode};
 
 pub mod camera;
 use crate::app::camera::{Camera, CameraUniform};
@@ -32,12 +32,13 @@ pub struct AppGraphicsEngine {
     gravity_pipeline: wgpu::ComputePipeline,
     gravity_bind_group: wgpu::BindGroup,
     body_buffer: wgpu::Buffer,
-    body_read_buffer: wgpu::Buffer,
     simulation_buffer: wgpu::Buffer,
 
     velocity_pipeline: wgpu::RenderPipeline,
-    velocity_layout: wgpu::BindGroupLayout,
     velocity_bind_group: wgpu::BindGroup,
+
+    octree_buffer: wgpu::Buffer,
+    octree_dirty: bool,
 }
 
 impl AppGraphicsEngine {
@@ -250,6 +251,57 @@ impl AppGraphicsEngine {
             cache:None,
             });
 
+            let trail_length = 200;
+            let body_count = bodies.len();
+
+            let trail_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("GPU Trail Buffer"),
+
+                size: (body_count * trail_length *
+                    std::mem::size_of::<TrailVertex>()) as u64,
+
+                usage:
+                    wgpu::BufferUsages::STORAGE |
+                    wgpu::BufferUsages::VERTEX,
+
+                mapped_at_creation: false,
+            });
+
+            let trail_layout =
+                device.create_bind_group_layout(
+                &wgpu::BindGroupLayoutDescriptor {
+                    label: Some("trail layout"),
+                    entries: &[
+                        // bodies
+                        wgpu::BindGroupLayoutEntry {
+                            binding:0,
+                            visibility:wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage {
+                                    read_only:true
+                                },
+                                has_dynamic_offset:false,
+                                min_binding_size:None,
+                            },
+                            count:None,
+                        },
+
+                        // trails
+                        wgpu::BindGroupLayoutEntry {
+                            binding:1,
+                            visibility:wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage {
+                                    read_only:false
+                                },
+                                has_dynamic_offset:false,
+                                min_binding_size:None,
+                            },
+                            count:None,
+                        },
+                    ],
+                });
+
             let starfield = Starfield::new(device);
 
             let star_shader =
@@ -337,6 +389,16 @@ impl AppGraphicsEngine {
                     }
                 );
 
+                let octree_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Octree Buffer"),
+                    size: 100000 * std::mem::size_of::<GpuOctreeNode>() as u64,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+
+                //println!("Octree buffer size: {}", octree_buffer.size());
+
                 let simulation_buffer = device.create_buffer_init(
                     &wgpu::util::BufferInitDescriptor {
                         label: Some("Simulation Buffer"),
@@ -355,7 +417,7 @@ impl AppGraphicsEngine {
                     &wgpu::BindGroupLayoutDescriptor {
                         label: Some("gravity layout"),
                         entries: &[
-                            //bodies buffer
+                            // bodies buffer
                             wgpu::BindGroupLayoutEntry {
                                 binding: 0,
                                 visibility: wgpu::ShaderStages::COMPUTE,
@@ -366,9 +428,22 @@ impl AppGraphicsEngine {
                                 },
                                 count: None,
                             },
-                            // simulation params
+
+                            // octree buffer
                             wgpu::BindGroupLayoutEntry {
                                 binding: 1,
+                                visibility: wgpu::ShaderStages::COMPUTE,
+                                ty: wgpu::BindingType::Buffer {
+                                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                    has_dynamic_offset: false,
+                                    min_binding_size: None,
+                                },
+                                count: None,
+                            },
+
+                            // simulation params
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 2,
                                 visibility: wgpu::ShaderStages::COMPUTE,
                                 ty: wgpu::BindingType::Buffer {
                                     ty: wgpu::BufferBindingType::Uniform,
@@ -376,7 +451,7 @@ impl AppGraphicsEngine {
                                     min_binding_size: None,
                                 },
                                 count: None,
-                            }
+                            },
                         ],
                     }
                 );
@@ -391,9 +466,14 @@ impl AppGraphicsEngine {
                                 binding: 0,
                                 resource: body_buffer.as_entire_binding(),
                             },
-                            // simulation params
+                            // octree
                             wgpu::BindGroupEntry {
                                 binding: 1,
+                                resource: octree_buffer.as_entire_binding(),
+                            },
+                            // simulation params
+                            wgpu::BindGroupEntry {
+                                binding: 2,
                                 resource: simulation_buffer.as_entire_binding(),
                             },
                         ],
@@ -417,17 +497,6 @@ impl AppGraphicsEngine {
                     compilation_options:
                         PipelineCompilationOptions::default(),
                     cache: None,
-                }
-            );
-
-            let body_read_buffer = device.create_buffer(
-                &wgpu::BufferDescriptor {
-                    label: Some("Body Read Buffer"),
-                    size: (std::mem::size_of::<GpuBody>() * bodies.len()) as u64,
-                    usage: 
-                        wgpu::BufferUsages::COPY_DST |
-                        wgpu::BufferUsages::MAP_READ,
-                    mapped_at_creation: false,
                 }
             );
 
@@ -530,10 +599,10 @@ impl AppGraphicsEngine {
             gravity_bind_group,
             body_buffer,
             simulation_buffer,
-            body_read_buffer,
             velocity_pipeline,
-            velocity_layout,
             velocity_bind_group,
+            octree_buffer,
+            octree_dirty: true,
         }
     }
 
@@ -551,160 +620,172 @@ impl AppGraphicsEngine {
         );
     }
 
-    pub fn get_positions(&self, device: &wgpu::Device) -> Vec<glam::Vec3> {
-        let slice = self.body_read_buffer.slice(..);
 
-        slice.map_async(wgpu::MapMode::Read, |_| {});
+    pub fn render(
+        &mut self, 
+        queue: &wgpu::Queue, 
+        device: &wgpu::Device, 
+        view: &wgpu::TextureView, 
+        trail: Option<&Trail>, 
+        simulation_dt: f32, 
+        show_velocity_vectors: bool, 
+        gpu_nodes: &[GpuOctreeNode]) {
 
-        device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None});
-
-        let data = slice.get_mapped_range();
-
-        let bodies: &[GpuBody] =
-            bytemuck::cast_slice(&data);
-
-        let positions =
-            bodies.iter()
-            .map(|b| {
-                glam::Vec3::new(
-                    b.position[0],
-                    b.position[1],
-                    b.position[2],
-                )
-            })
-            .collect();
-
-        drop(data);
-
-        self.body_read_buffer.unmap();
-
-        positions
-    }
-
-    pub fn render(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, view: &wgpu::TextureView, trail: Option<&Trail>, simulation_dt: f32, show_velocity_vectors: bool) {
-        queue.write_buffer(
-            &self.simulation_buffer,
-            0,
-            bytemuck::cast_slice(&[SimulationParams {
-                dt: simulation_dt,
-                _padding: [0.0; 7],
-            }]),
-        );
-
-        let mut encoder = device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            }
-        );
-
-        //run the gravity compute shader
-        {
-            let mut cpass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor {
-                    label: Some("Gravity Compute Pass"),
-                    timestamp_writes: None,
-                }
-            );
-
-            cpass.set_pipeline(&self.gravity_pipeline);
-            cpass.set_bind_group(0, &self.gravity_bind_group, &[]);
-
-            let workgroups = (self.example_object.instances + 63) / 64;
-            cpass.dispatch_workgroups(workgroups, 1, 1);
-        }
-
-        encoder.copy_buffer_to_buffer(&self.body_buffer, 0, &self.body_read_buffer, 0, self.body_buffer.size());
-
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            depth_stencil_attachment: Some(
-                wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture,
-                    depth_ops: Some(
-                        wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }
-                    ),
-                    stencil_ops: None,
-                }
-            ),
-            occlusion_query_set: None,
-            timestamp_writes: None,
-            multiview_mask: None,
-        });
-
-        rpass.set_pipeline(&self.pipeline);
-
-       if show_velocity_vectors {
-            rpass.set_pipeline(&self.velocity_pipeline);
-
-            rpass.set_bind_group(0, &self.velocity_bind_group, &[]);
-            rpass.set_bind_group(1, &self.camera_bind_group, &[]);
-
-            rpass.draw(0..2, 0..self.example_object.instances);
-        }
-
-        rpass.set_bind_group(
-            0,
-            &self.camera_bind_group,
-            &[],
-        );
-
-        // create starfield pipeline and draw starfield
-        rpass.set_pipeline(&self.star_pipeline);
-        rpass.set_vertex_buffer(0, self.starfield.vertex_buffer.slice(..));
-        rpass.draw(0..self.starfield.num_stars, 0..1);
-
-        // draw planets first
-        rpass.set_pipeline(&self.pipeline);
-
-        rpass.set_bind_group(0, &self.camera_bind_group, &[]);
-        rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
-        rpass.set_vertex_buffer(1, self.body_buffer.slice(..));
-
-        if let Some(index_buffer) = &self.example_object.index_buffer {
-            rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(
-                0..self.example_object.num_to_draw,
+            queue.write_buffer(
+                &self.simulation_buffer,
                 0,
-                0..self.example_object.instances,
+                bytemuck::cast_slice(&[SimulationParams {
+                    dt: simulation_dt,
+                    _padding: [0.0; 7],
+                }]),
             );
-        } else {
-            rpass.draw(
-                0..self.example_object.num_to_draw,
-                0..self.example_object.instances,
-            );
-        }
 
-        if let Some(trail) = trail {
-            rpass.set_pipeline(&self.trail_pipeline);
-            rpass.set_vertex_buffer(0, trail.vertex_buffer.slice(..));
+            if self.octree_dirty {
+                    queue.write_buffer(
+                        &self.octree_buffer,
+                        0,
+                        bytemuck::cast_slice(gpu_nodes),
+                    );
 
-            for range in &trail.ranges {
-                if range.end > range.start {
-                    rpass.draw(range.clone(), 0..1);
+                    self.octree_dirty = false;
                 }
+
+            // println!(
+            //     "UPLOAD: {} nodes, {} bytes",
+            //     gpu_nodes.len(),
+            //     gpu_nodes.len() * std::mem::size_of::<GpuOctreeNode>()
+            // );
+
+            // if gpu_nodes.len() * std::mem::size_of::<GpuOctreeNode>() > self.octree_buffer.size() as usize {
+            //     panic!("OCTREE TOO BIG");
+            // }
+
+            // let bytes = std::mem::size_of_val(gpu_nodes);
+
+            // println!(
+            //     "octree upload: {} nodes {} bytes buffer {}",
+            //     gpu_nodes.len(),
+            //     bytes,
+            //     self.octree_buffer.size()
+            // );
+
+            queue.write_buffer(
+                &self.octree_buffer,
+                0,
+                bytemuck::cast_slice(gpu_nodes),
+            );
+
+            let mut encoder = device.create_command_encoder(
+                &wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                }
+            );
+
+            //run the gravity compute shader
+            {
+                let mut cpass = encoder.begin_compute_pass(
+                    &wgpu::ComputePassDescriptor {
+                        label: Some("Gravity Compute Pass"),
+                        timestamp_writes: None,
+                    }
+                );
+
+                cpass.set_pipeline(&self.gravity_pipeline);
+                cpass.set_bind_group(0, &self.gravity_bind_group, &[]);
+
+                let workgroups = (self.example_object.instances + 63) / 64;
+                cpass.dispatch_workgroups(workgroups, 1, 1);
             }
-        }
 
-        drop(rpass);
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: Some(
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth_texture,
+                        depth_ops: Some(
+                            wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }
+                        ),
+                        stencil_ops: None,
+                    }
+                ),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
 
-        queue.submit(Some(encoder.finish()));
+            rpass.set_pipeline(&self.pipeline);
+
+        if show_velocity_vectors {
+                rpass.set_pipeline(&self.velocity_pipeline);
+
+                rpass.set_bind_group(0, &self.velocity_bind_group, &[]);
+                rpass.set_bind_group(1, &self.camera_bind_group, &[]);
+
+                rpass.draw(0..2, 0..self.example_object.instances);
+            }
+
+            rpass.set_bind_group(
+                0,
+                &self.camera_bind_group,
+                &[],
+            );
+
+            // create starfield pipeline and draw starfield
+            rpass.set_pipeline(&self.star_pipeline);
+            rpass.set_vertex_buffer(0, self.starfield.vertex_buffer.slice(..));
+            rpass.draw(0..self.starfield.num_stars, 0..1);
+
+            // draw planets first
+            rpass.set_pipeline(&self.pipeline);
+
+            rpass.set_bind_group(0, &self.camera_bind_group, &[]);
+            rpass.set_vertex_buffer(0, self.example_object.vertex_buffers[0].slice(..));
+            rpass.set_vertex_buffer(1, self.body_buffer.slice(..));
+
+            if let Some(index_buffer) = &self.example_object.index_buffer {
+                rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                rpass.draw_indexed(
+                    0..self.example_object.num_to_draw,
+                    0,
+                    0..self.example_object.instances,
+                );
+            } else {
+                rpass.draw(
+                    0..self.example_object.num_to_draw,
+                    0..self.example_object.instances,
+                );
+            }
+
+            // if let Some(trail) = trail {
+            //     rpass.set_pipeline(&self.trail_pipeline);
+            //     rpass.set_vertex_buffer(0, self.trail_buffer.slice(..));
+            //     for range in &trail.ranges {
+            //         if range.end > range.start {
+            //             rpass.draw(range.clone(), 0..1);
+            //         }
+            //     }
+            // }
+
+            drop(rpass);
+
+            queue.submit(Some(encoder.finish()));
     }
 
 }

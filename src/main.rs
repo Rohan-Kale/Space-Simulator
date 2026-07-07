@@ -5,8 +5,6 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{WindowId};
 use winit::keyboard::KeyCode;
 
-use glam::Vec3;
-
 use std::time::Instant;
 use std::collections::HashSet;
 
@@ -20,6 +18,7 @@ use crate::app::trail::Trail;
 
 mod physics;
 use physics::Body;
+use crate::physics::octree::build_gpu_octree;
 
 mod ui;
 use crate::ui::{UiState, UiRenderer};
@@ -67,6 +66,9 @@ struct App {
     ui_renderer: Option<UiRenderer>,
 
     camera_rotating: bool,
+
+    gpu_nodes: Vec<physics::gpu_octree::GpuOctreeNode>,
+    octree_timer: f32,
 }
 
 impl App {
@@ -74,58 +76,70 @@ impl App {
 
         let mut bodies = Vec::new();
 
+        let pi = std::f32::consts::PI;
+
+        // Sun
         bodies.push(Body {
-            position: [-2.0, 0.0, 0.0],
-            velocity: [0.0, -2.0, 0.0],
+            position: [0.0, 0.0, 0.0],
+            velocity: [0.0, 0.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 100.0,
+            mass: 1.0,
             radius: 0.5,
         });
 
+        // Earth
         bodies.push(Body {
-            position: [2.0, 0.0, 0.0],
-            velocity: [0.0, 2.0, 0.0],
+            position: [1.0, 0.0, 0.0],
+            velocity: [
+                0.0,
+                2.0 * pi,
+                0.0
+            ],
             acceleration: [0.0, 0.0, 0.0],
-            mass: 100.0,
-            radius: 0.5,
+            mass: 3.003e-6,
+            radius: 0.06,
         });
 
-        for i in 0..50 {
-            let angle = i as f32 * 0.2;
-            let radius = 10.0 + (i as f32 * 0.05);
+        // for i in 0..5000 {
+        //     let angle = i as f32 * 0.2;
+        //     let radius = 10.0 + (i as f32 * 0.05);
 
-            bodies.push(Body {
-                position: [
-                    radius * angle.cos(),
-                    radius * angle.sin(),
-                    0.0,
-                ],
+        //     bodies.push(Body {
+        //         position: [
+        //             radius * angle.cos(),
+        //             radius * angle.sin(),
+        //             0.0,
+        //         ],
 
-                velocity: [
-                    -angle.sin() * 0.5,
-                    angle.cos() * 0.5,
-                    0.0,
-                ],
+        //        velocity: [
+        //             -angle.sin() * 3.1,
+        //             angle.cos() * 3.1,
+        //             0.0,
+        //         ],
 
-                acceleration: [0.0,0.0,0.0],
+        //         acceleration: [0.0,0.0,0.0],
 
-                mass: 0.01,
+        //         mass: 0.01,
 
-                radius: 0.5,
-            });
-        }
+        //         radius: 0.5,
+        //     });
+        // }
 
         let camera = Camera {
-            position: glam::vec3(0.0, 0.0, 10.0),
+            position: glam::vec3(0.0, 3.0, 8.0),
+
             up: glam::Vec3::Y,
 
             aspect: window_size.0 as f32 / window_size.1 as f32,
+
             fovy: 45.0_f32.to_radians(),
-            znear: 0.1,
-            zfar: 1000.0,
+
+            // AU scale
+            znear: 0.001,
+            zfar: 100.0,
 
             yaw: -90.0_f32.to_radians(),
-            pitch: 0.0,
+            pitch: -15.0_f32.to_radians(),
         };
 
 
@@ -148,16 +162,22 @@ impl App {
             ui: UiState::new(),
             ui_renderer: None,
             camera_rotating: false, 
+            gpu_nodes: Vec::new(),
+            octree_timer: 0.0,
         }
     }
 
     fn update(&mut self, dt: f32) {
         self.trail_timer += dt;
-
-        let simulation_dt = dt * self.ui.time_scale;
+        self.octree_timer += dt;
 
         if self.ui.paused {
             return;
+        }
+
+        if self.octree_timer > 0.05 {
+            self.gpu_nodes = build_gpu_octree(&self.bodies);
+            self.octree_timer = 0.0;
         }
 
         self.frame_count += 1;
@@ -168,26 +188,22 @@ impl App {
             self.last_fps_update = Instant::now();
         }
 
-        let physics_start = Instant::now();
-
-        let physics_ms = physics_start.elapsed().as_secs_f64() * 1000.0;
-
         let speed = 2.5;
         let right = self.camera.direction().cross(self.camera.up).normalize();
         let up = self.camera.up.normalize();
 
-        if self.trail_ready {
-            if let (Some(trail), Some(engine)) = (&mut self.trail, &self.engine) {
-                let positions = engine.get_positions(
-                    &self.environment.as_ref().unwrap().device
-                );
+        // if self.trail_ready {
+        //     if let (Some(trail), Some(engine)) = (&mut self.trail, &self.engine) {
+        //         let positions = engine.get_positions(
+        //             &self.environment.as_ref().unwrap().device
+        //         );
 
-                trail.update(
-                    &self.environment.as_ref().unwrap().queue,
-                    &positions,
-                );
-            }
-        }
+        //         trail.update(
+        //             &self.environment.as_ref().unwrap().queue,
+        //             &positions,
+        //         );
+        //     }
+        // }
 
         if self.keys.contains(&KeyCode::KeyW) {
             self.camera.position += self.camera.direction() * speed * dt;
@@ -253,13 +269,6 @@ impl App {
                 );
                 return;
             }
-            wgpu::CurrentSurfaceTexture::Lost => {
-                app_window.surface.configure(
-                    &app_window.device,
-                    &app_window.surface_desc,
-                );
-                return;
-            }
 
             wgpu::CurrentSurfaceTexture::Occluded
             | wgpu::CurrentSurfaceTexture::Validation => {
@@ -273,6 +282,9 @@ impl App {
 
 
         let trail = self.ui.show_trails.then_some(self.trail.as_ref()).flatten();
+
+        //println!("GPU octree nodes: {}", self.gpu_nodes.len());
+
         self.engine
             .as_mut()
             .unwrap()
@@ -283,6 +295,7 @@ impl App {
                 trail,
                 self.ui.time_scale * 0.001,
                 self.ui.show_velocity_vectors,
+                &self.gpu_nodes,
             );
 
         let paint_jobs =
@@ -414,6 +427,13 @@ impl App {
                             0.0..=5.0
                         )
                         .text("Simulation Speed")
+                    );
+                    ui.add(
+                        egui::Slider::new(
+                            &mut self.ui.theta,
+                            0.1..=100.0
+                        )
+                        .text("Barnes-Hut Accuracy")
                     );
                     ui.checkbox(
                         &mut self.ui.show_trails,
