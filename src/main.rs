@@ -14,7 +14,6 @@ use crate::app_environment::AppEnvironment;
 mod app;
 use crate::app::*;
 use crate::app::camera::Camera;
-use crate::app::trail::Trail;
 
 mod physics;
 use physics::Body;
@@ -58,10 +57,6 @@ struct App {
     fps: u32,
     last_frame: Instant,
 
-    trail: Option<Trail>,
-    trail_ready: bool,
-    trail_timer: f32,
-
     ui: UiState,
     ui_renderer: Option<UiRenderer>,
 
@@ -84,7 +79,7 @@ impl App {
             velocity: [0.0, 0.0, 0.0],
             acceleration: [0.0, 0.0, 0.0],
             mass: 1.0,
-            radius: 0.5,
+            radius: 0.06,
         });
 
         // Earth
@@ -156,9 +151,6 @@ impl App {
             fps: 0,
             keys: HashSet::new(),
             last_frame: Instant::now(),
-            trail: None,
-            trail_ready: false,
-            trail_timer: 0.0,
             ui: UiState::new(),
             ui_renderer: None,
             camera_rotating: false, 
@@ -168,7 +160,6 @@ impl App {
     }
 
     fn update(&mut self, dt: f32) {
-        self.trail_timer += dt;
         self.octree_timer += dt;
 
         if self.ui.paused {
@@ -191,19 +182,6 @@ impl App {
         let speed = 2.5;
         let right = self.camera.direction().cross(self.camera.up).normalize();
         let up = self.camera.up.normalize();
-
-        // if self.trail_ready {
-        //     if let (Some(trail), Some(engine)) = (&mut self.trail, &self.engine) {
-        //         let positions = engine.get_positions(
-        //             &self.environment.as_ref().unwrap().device
-        //         );
-
-        //         trail.update(
-        //             &self.environment.as_ref().unwrap().queue,
-        //             &positions,
-        //         );
-        //     }
-        // }
 
         if self.keys.contains(&KeyCode::KeyW) {
             self.camera.position += self.camera.direction() * speed * dt;
@@ -280,9 +258,6 @@ impl App {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-
-        let trail = self.ui.show_trails.then_some(self.trail.as_ref()).flatten();
-
         //println!("GPU octree nodes: {}", self.gpu_nodes.len());
 
         self.engine
@@ -292,7 +267,6 @@ impl App {
                 &app_window.queue,
                 &app_window.device,
                 &view,
-                trail,
                 self.ui.time_scale * 0.001,
                 self.ui.show_velocity_vectors,
                 &self.gpu_nodes,
@@ -342,8 +316,6 @@ impl App {
             pixels_per_point:
                 app_window.window.scale_factor() as f32,
         };
-
-        self.trail_ready = true;
 
         let mut encoder =
             app_window.device.create_command_encoder(
@@ -436,10 +408,6 @@ impl App {
                         .text("Barnes-Hut Accuracy")
                     );
                     ui.checkbox(
-                        &mut self.ui.show_trails,
-                        "Show Trails"
-                    );
-                    ui.checkbox(
                         &mut self.ui.show_velocity_vectors,
                         "Velocity Vectors"
                     );
@@ -469,8 +437,6 @@ impl ApplicationHandler for App {
             &app_window.device,
             app_window.surface_desc.format,
         ));
-
-        self.trail = Some(Trail::new(device, self.bodies.len()));
 
         self.engine = Some(AppGraphicsEngine::new(&self.environment.as_ref().unwrap().device, &self.environment.as_ref().unwrap().surface_desc, &self.example_program, &self.bodies, &self.camera));
         

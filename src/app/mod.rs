@@ -9,16 +9,11 @@ pub mod camera;
 use crate::app::camera::{Camera, CameraUniform};
 use wgpu::util::DeviceExt;
 
-
-pub mod trail;
-use crate::app::trail::{Trail, TrailVertex};
-
 pub mod starfield;
 use crate::app::starfield::{Starfield, StarVertex};
 
 pub struct AppGraphicsEngine {
     pipeline: wgpu::RenderPipeline,
-    trail_pipeline: wgpu::RenderPipeline,
     example_object: Object,
 
     camera_buffer: wgpu::Buffer,
@@ -181,414 +176,292 @@ impl AppGraphicsEngine {
             }
         ).create_view(&wgpu::TextureViewDescriptor::default());
 
-        let trail_shader =
-            device.create_shader_module(
-                include_wgsl!("../../resources/trail.wgsl")
-            );
+        let starfield = Starfield::new(device);
 
-        let trail_pipeline =
+        let star_shader =
+        device.create_shader_module(include_wgsl!("../../resources/star.wgsl"));
+
+        let star_pipeline =
             device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
-            label: Some("Trail Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &trail_shader,
-                entry_point: Some("vs_main"),
-                compilation_options:
-                    PipelineCompilationOptions::default(),
-                buffers: &[
-                    wgpu::VertexBufferLayout {
-                        array_stride:
-                            std::mem::size_of::<TrailVertex>()
-                            as u64,
-                        step_mode:
-                            wgpu::VertexStepMode::Vertex,
-                        attributes:&[
-                            wgpu::VertexAttribute {
-                                offset:0,
-                                shader_location:0,
-                                format: wgpu::VertexFormat::Float32x3,
-                            },
-                            wgpu::VertexAttribute {
-                                offset: std::mem::size_of::<[f32;3]>() as u64,
-                                shader_location: 1,
-                                format: wgpu::VertexFormat::Float32,
+                &wgpu::RenderPipelineDescriptor {
+                    label: Some("Star Pipeline"),
+
+                    layout: Some(&pipeline_layout),
+
+                    vertex: wgpu::VertexState {
+                        module: &star_shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options:
+                            PipelineCompilationOptions::default(),
+
+                        buffers: &[
+                            wgpu::VertexBufferLayout {
+                                array_stride:
+                                    std::mem::size_of::<StarVertex>() as u64,
+                                step_mode:
+                                    wgpu::VertexStepMode::Vertex,
+                                attributes:&[
+                                    wgpu::VertexAttribute {
+                                        offset:0,
+                                        shader_location:0,
+                                        format:
+                                        wgpu::VertexFormat::Float32x3,
+                                    }
+                                ],
                             }
                         ],
-                    }
-                ],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module:&trail_shader,
-                entry_point:Some("fs_main"),
-                compilation_options:
-                    PipelineCompilationOptions::default(),
-                targets:&[
-                    Some(wgpu::ColorTargetState {
-                        format:config.format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask:wgpu::ColorWrites::ALL,
-                    })
-                ],
-            }),
-            primitive:wgpu::PrimitiveState {
-                topology:
-                wgpu::PrimitiveTopology::LineStrip,
-                ..Default::default()
-            },
-            depth_stencil: Some(
-                wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: Some(false),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
-                    stencil: Default::default(),
-                    bias: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module:&star_shader,
+                        entry_point:Some("fs_main"),
+                        compilation_options:
+                            PipelineCompilationOptions::default(),
+                        targets:&[
+                            Some(wgpu::ColorTargetState {
+                                format:config.format,
+                                blend:Some(wgpu::BlendState::REPLACE),
+                                write_mask:
+                                wgpu::ColorWrites::ALL,
+                            })
+                        ],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology:
+                            wgpu::PrimitiveTopology::PointList,
+
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(
+                        wgpu::DepthStencilState {
+                            format: wgpu::TextureFormat::Depth32Float,
+                            depth_write_enabled: Some(false),
+                            depth_compare: Some(wgpu::CompareFunction::Always),
+                            stencil: Default::default(),
+                            bias: Default::default(),
+                        }
+                    ),
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask:None,
+                    cache:None,
                 }
-            ),
-            multisample:
-            wgpu::MultisampleState::default(),
-            multiview_mask:None,
-            cache:None,
-            });
+            );
 
-            let trail_length = 200;
-            let body_count = bodies.len();
+            let gpu_bodies: Vec<GpuBody> = bodies
+                .iter()
+                .map(|b| GpuBody::from(b))
+                .collect();
 
-            let trail_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("GPU Trail Buffer"),
+            let body_buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Body Storage Buffer"),
+                    contents: bytemuck::cast_slice(&gpu_bodies),
+                    usage:
+                        wgpu::BufferUsages::STORAGE |
+                        wgpu::BufferUsages::VERTEX |
+                        wgpu::BufferUsages::COPY_DST |
+                        wgpu::BufferUsages::COPY_SRC,
+                }
+            );
 
-                size: (body_count * trail_length *
-                    std::mem::size_of::<TrailVertex>()) as u64,
-
-                usage:
-                    wgpu::BufferUsages::STORAGE |
-                    wgpu::BufferUsages::VERTEX,
-
+            let octree_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Octree Buffer"),
+                size: 100000 * std::mem::size_of::<GpuOctreeNode>() as u64,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
 
-            let trail_layout =
-                device.create_bind_group_layout(
-                &wgpu::BindGroupLayoutDescriptor {
-                    label: Some("trail layout"),
-                    entries: &[
-                        // bodies
-                        wgpu::BindGroupLayoutEntry {
-                            binding:0,
-                            visibility:wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage {
-                                    read_only:true
-                                },
-                                has_dynamic_offset:false,
-                                min_binding_size:None,
-                            },
-                            count:None,
-                        },
+            //println!("Octree buffer size: {}", octree_buffer.size());
 
-                        // trails
-                        wgpu::BindGroupLayoutEntry {
-                            binding:1,
-                            visibility:wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage {
-                                    read_only:false
-                                },
-                                has_dynamic_offset:false,
-                                min_binding_size:None,
-                            },
-                            count:None,
-                        },
-                    ],
-                });
-
-            let starfield = Starfield::new(device);
-
-            let star_shader =
-            device.create_shader_module(include_wgsl!("../../resources/star.wgsl"));
-
-            let star_pipeline =
-                device.create_render_pipeline(
-                    &wgpu::RenderPipelineDescriptor {
-                        label: Some("Star Pipeline"),
-
-                        layout: Some(&pipeline_layout),
-
-                        vertex: wgpu::VertexState {
-                            module: &star_shader,
-                            entry_point: Some("vs_main"),
-                            compilation_options:
-                                PipelineCompilationOptions::default(),
-
-                            buffers: &[
-                                wgpu::VertexBufferLayout {
-                                    array_stride:
-                                        std::mem::size_of::<StarVertex>() as u64,
-                                    step_mode:
-                                        wgpu::VertexStepMode::Vertex,
-                                    attributes:&[
-                                        wgpu::VertexAttribute {
-                                            offset:0,
-                                            shader_location:0,
-                                            format:
-                                            wgpu::VertexFormat::Float32x3,
-                                        }
-                                    ],
-                                }
-                            ],
-                        },
-                        fragment: Some(wgpu::FragmentState {
-                            module:&star_shader,
-                            entry_point:Some("fs_main"),
-                            compilation_options:
-                                PipelineCompilationOptions::default(),
-                            targets:&[
-                                Some(wgpu::ColorTargetState {
-                                    format:config.format,
-                                    blend:Some(wgpu::BlendState::REPLACE),
-                                    write_mask:
-                                    wgpu::ColorWrites::ALL,
-                                })
-                            ],
-                        }),
-                        primitive: wgpu::PrimitiveState {
-                            topology:
-                                wgpu::PrimitiveTopology::PointList,
-
-                            ..Default::default()
-                        },
-                        depth_stencil: Some(
-                            wgpu::DepthStencilState {
-                                format: wgpu::TextureFormat::Depth32Float,
-                                depth_write_enabled: Some(false),
-                                depth_compare: Some(wgpu::CompareFunction::Always),
-                                stencil: Default::default(),
-                                bias: Default::default(),
-                            }
-                        ),
-                        multisample: wgpu::MultisampleState::default(),
-                        multiview_mask:None,
-                        cache:None,
-                    }
-                );
-
-                let gpu_bodies: Vec<GpuBody> = bodies
-                    .iter()
-                    .map(|b| GpuBody::from(b))
-                    .collect();
-
-                let body_buffer = device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor {
-                        label: Some("Body Storage Buffer"),
-                        contents: bytemuck::cast_slice(&gpu_bodies),
-                        usage:
-                            wgpu::BufferUsages::STORAGE |
-                            wgpu::BufferUsages::VERTEX |
-                            wgpu::BufferUsages::COPY_DST |
-                            wgpu::BufferUsages::COPY_SRC,
-                    }
-                );
-
-                let octree_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Octree Buffer"),
-                    size: 100000 * std::mem::size_of::<GpuOctreeNode>() as u64,
-                    usage: wgpu::BufferUsages::STORAGE
-                        | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-
-                //println!("Octree buffer size: {}", octree_buffer.size());
-
-                let simulation_buffer = device.create_buffer_init(
-                    &wgpu::util::BufferInitDescriptor {
-                        label: Some("Simulation Buffer"),
-                        contents: bytemuck::cast_slice(&[SimulationParams {
-                            dt: 0.001,
-                            _padding: [0.0; 7],
-                        }]),
-                        usage:
-                            wgpu::BufferUsages::UNIFORM |
-                            wgpu::BufferUsages::COPY_DST,
-                    },
-                );
-
-                let gravity_shader = device.create_shader_module(include_wgsl!("../../resources/gravity.wgsl"));
-                let gravity_layout = device.create_bind_group_layout(
-                    &wgpu::BindGroupLayoutDescriptor {
-                        label: Some("gravity layout"),
-                        entries: &[
-                            // bodies buffer
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer {
-                                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                                    has_dynamic_offset: false,
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },
-
-                            // octree buffer
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer {
-                                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                    has_dynamic_offset: false,
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },
-
-                            // simulation params
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 2,
-                                visibility: wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Buffer {
-                                    ty: wgpu::BufferBindingType::Uniform,
-                                    has_dynamic_offset: false,
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            },
-                        ],
-                    }
-                );
-
-                let gravity_bind_group = device.create_bind_group(
-                    &wgpu::BindGroupDescriptor {
-                        label: Some("gravity bind group"),
-                        layout: &gravity_layout,
-                        entries: &[
-                            // bodies
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: body_buffer.as_entire_binding(),
-                            },
-                            // octree
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: octree_buffer.as_entire_binding(),
-                            },
-                            // simulation params
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: simulation_buffer.as_entire_binding(),
-                            },
-                        ],
-                    }
-                );
-
-                let gravity_pipeline = device.create_compute_pipeline(
-                &wgpu::ComputePipelineDescriptor {
-                    label: Some("Gravity Compute"),
-                    layout: Some(
-                        &device.create_pipeline_layout(
-                            &wgpu::PipelineLayoutDescriptor {
-                                label: None,
-                                bind_group_layouts: &[Some(&gravity_layout)],
-                                immediate_size: 0,
-                            }
-                        )
-                    ),
-                    module: &gravity_shader,
-                    entry_point: Some("main"),
-                    compilation_options:
-                        PipelineCompilationOptions::default(),
-                    cache: None,
-                }
+            let simulation_buffer = device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Simulation Buffer"),
+                    contents: bytemuck::cast_slice(&[SimulationParams {
+                        dt: 0.001,
+                        _padding: [0.0; 7],
+                    }]),
+                    usage:
+                        wgpu::BufferUsages::UNIFORM |
+                        wgpu::BufferUsages::COPY_DST,
+                },
             );
 
-            let velocity_shader =
-                device.create_shader_module(include_wgsl!("../../resources/velocity.wgsl"));
-
-            let velocity_layout = device.create_bind_group_layout(
+            let gravity_shader = device.create_shader_module(include_wgsl!("../../resources/gravity.wgsl"));
+            let gravity_layout = device.create_bind_group_layout(
                 &wgpu::BindGroupLayoutDescriptor {
-                    label: Some("velocity layout"),
+                    label: Some("gravity layout"),
                     entries: &[
+                        // bodies buffer
                         wgpu::BindGroupLayoutEntry {
                             binding: 0,
-                            visibility: wgpu::ShaderStages::VERTEX,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+
+                        // octree buffer
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::COMPUTE,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Storage { read_only: true },
                                 has_dynamic_offset: false,
                                 min_binding_size: None,
                             },
                             count: None,
-                        }
+                        },
+
+                        // simulation params
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
                     ],
                 }
             );
 
-            let velocity_pipeline_layout =
-                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("velocity pipeline layout"),
-                    bind_group_layouts: &[
-                        Some(&velocity_layout),
-                        Some(&camera_bind_group_layout),
-                    ],
-                    immediate_size: 0,
-                });
-
-            let velocity_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Velocity Pipeline"),
-                layout: Some(&velocity_pipeline_layout), // same camera layout is fine
-                vertex: wgpu::VertexState {
-                    module: &velocity_shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[
-                        // wgpu::VertexBufferLayout {
-                        //     array_stride: std::mem::size_of::<GpuBody>() as u64,
-                        //     step_mode: wgpu::VertexStepMode::Instance,
-                        //     attributes: &[],
-                        // }
-                    ],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &velocity_shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::LineList,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32Float,
-                    depth_write_enabled: Some(false),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: Default::default(),
-                multiview_mask: None,
-                cache: None,
-            });
-
-            let velocity_bind_group = device.create_bind_group(
+            let gravity_bind_group = device.create_bind_group(
                 &wgpu::BindGroupDescriptor {
-                    label: Some("velocity bind group"),
-                    layout: &velocity_layout,
+                    label: Some("gravity bind group"),
+                    layout: &gravity_layout,
                     entries: &[
+                        // bodies
                         wgpu::BindGroupEntry {
                             binding: 0,
                             resource: body_buffer.as_entire_binding(),
-                        }
+                        },
+                        // octree
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: octree_buffer.as_entire_binding(),
+                        },
+                        // simulation params
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: simulation_buffer.as_entire_binding(),
+                        },
                     ],
                 }
             );
 
+            let gravity_pipeline = device.create_compute_pipeline(
+            &wgpu::ComputePipelineDescriptor {
+                label: Some("Gravity Compute"),
+                layout: Some(
+                    &device.create_pipeline_layout(
+                        &wgpu::PipelineLayoutDescriptor {
+                            label: None,
+                            bind_group_layouts: &[Some(&gravity_layout)],
+                            immediate_size: 0,
+                        }
+                    )
+                ),
+                module: &gravity_shader,
+                entry_point: Some("main"),
+                compilation_options:
+                    PipelineCompilationOptions::default(),
+                cache: None,
+            }
+        );
+
+        let velocity_shader =
+            device.create_shader_module(include_wgsl!("../../resources/velocity.wgsl"));
+
+        let velocity_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("velocity layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }
+                ],
+            }
+        );
+
+        let velocity_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("velocity pipeline layout"),
+                bind_group_layouts: &[
+                    Some(&velocity_layout),
+                    Some(&camera_bind_group_layout),
+                ],
+                immediate_size: 0,
+            });
+
+        let velocity_pipeline =
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Velocity Pipeline"),
+            layout: Some(&velocity_pipeline_layout), // same camera layout is fine
+            vertex: wgpu::VertexState {
+                module: &velocity_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[
+                    // wgpu::VertexBufferLayout {
+                    //     array_stride: std::mem::size_of::<GpuBody>() as u64,
+                    //     step_mode: wgpu::VertexStepMode::Instance,
+                    //     attributes: &[],
+                    // }
+                ],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &velocity_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let velocity_bind_group = device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                label: Some("velocity bind group"),
+                layout: &velocity_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: body_buffer.as_entire_binding(),
+                    }
+                ],
+            }
+        );
+
         Self {
             pipeline,
-            trail_pipeline,
             example_object,
             camera_buffer,
             camera_bind_group,
@@ -626,7 +499,6 @@ impl AppGraphicsEngine {
         queue: &wgpu::Queue, 
         device: &wgpu::Device, 
         view: &wgpu::TextureView, 
-        trail: Option<&Trail>, 
         simulation_dt: f32, 
         show_velocity_vectors: bool, 
         gpu_nodes: &[GpuOctreeNode]) {
@@ -751,8 +623,9 @@ impl AppGraphicsEngine {
             rpass.set_pipeline(&self.star_pipeline);
             rpass.set_vertex_buffer(0, self.starfield.vertex_buffer.slice(..));
             rpass.draw(0..self.starfield.num_stars, 0..1);
+        
 
-            // draw planets first
+            // draw planets
             rpass.set_pipeline(&self.pipeline);
 
             rpass.set_bind_group(0, &self.camera_bind_group, &[]);
@@ -772,16 +645,6 @@ impl AppGraphicsEngine {
                     0..self.example_object.instances,
                 );
             }
-
-            // if let Some(trail) = trail {
-            //     rpass.set_pipeline(&self.trail_pipeline);
-            //     rpass.set_vertex_buffer(0, self.trail_buffer.slice(..));
-            //     for range in &trail.ranges {
-            //         if range.end > range.start {
-            //             rpass.draw(range.clone(), 0..1);
-            //         }
-            //     }
-            // }
 
             drop(rpass);
 
