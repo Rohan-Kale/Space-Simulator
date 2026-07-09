@@ -18,6 +18,7 @@ use crate::app::camera::Camera;
 mod physics;
 use physics::Body;
 use crate::physics::octree::build_gpu_octree;
+use physics::solar_system;
 
 mod ui;
 use crate::ui::{UiState, UiRenderer};
@@ -69,31 +70,31 @@ struct App {
 impl App {
     pub fn new(window_name: String, window_size: (i32, i32), example_program: SpacePrograms) -> Self {
 
-        let mut bodies = Vec::new();
+        let bodies = solar_system::create_solar_system();
 
-        let pi = std::f32::consts::PI;
+        //let pi = std::f32::consts::PI;
 
         // Sun
-        bodies.push(Body {
-            position: [0.0, 0.0, 0.0],
-            velocity: [0.0, 0.0, 0.0],
-            acceleration: [0.0, 0.0, 0.0],
-            mass: 1.0,
-            radius: 0.06,
-        });
+        // bodies.push(Body {
+        //     position: [0.0, 0.0, 0.0],
+        //     velocity: [0.0, 0.0, 0.0],
+        //     acceleration: [0.0, 0.0, 0.0],
+        //     mass: 1.0,
+        //     radius: 0.06,
+        // });
 
-        // Earth
-        bodies.push(Body {
-            position: [1.0, 0.0, 0.0],
-            velocity: [
-                0.0,
-                2.0 * pi,
-                0.0
-            ],
-            acceleration: [0.0, 0.0, 0.0],
-            mass: 3.003e-6,
-            radius: 0.06,
-        });
+        // // Earth
+        // bodies.push(Body {
+        //     position: [1.0, 0.0, 0.0],
+        //     velocity: [
+        //         0.0,
+        //         2.0 * pi,
+        //         0.0
+        //     ],
+        //     acceleration: [0.0, 0.0, 0.0],
+        //     mass: 3.003e-6,
+        //     radius: 0.06,
+        // });
 
         // for i in 0..5000 {
         //     let angle = i as f32 * 0.2;
