@@ -1,4 +1,5 @@
 use crate::physics::body::Body;
+use rand::{random_range};
 
 const G: f32 = 39.4784176;
 
@@ -50,6 +51,29 @@ pub fn create_solar_system() -> Vec<Body> {
             acceleration: [0.0, 0.0, 0.0],
             mass,
             radius,
+        });
+    }
+
+    for _ in 0..10000 {
+        let distance = random_range(2.2..3.2);
+        let angle = random_range(0.0..2.0 * std::f32::consts::PI);
+
+        let speed = (39.4784176_f32 / distance).sqrt();
+
+        bodies.push(Body {
+            position: [
+                distance * angle.cos(),
+                random_range(-0.01..0.01),
+                distance * angle.sin(),
+            ],
+            velocity: [
+                -angle.sin() * speed,
+                0.0,
+                angle.cos() * speed,
+            ],
+            acceleration: [0.0; 3],
+            mass: 1e-10,
+            radius: 0.005,
         });
     }
 
