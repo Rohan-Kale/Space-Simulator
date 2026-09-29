@@ -1,4 +1,4 @@
-//! Headless replay of the repository's CPU Barnes-Hut implementation.
+//Headless replay of the repository's CPU Barnes-Hut implementation.
 #[allow(dead_code, unused_imports)]
 #[path = "../../src/physics/mod.rs"]
 mod physics;
