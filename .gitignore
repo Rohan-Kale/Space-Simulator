@@ -1,1 +1,4 @@
 /target
+/replay/target
+/runs
+__pycache__/

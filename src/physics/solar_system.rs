@@ -1,9 +1,14 @@
 use crate::physics::body::Body;
-use rand::{random_range};
+use rand::Rng;
 
 const G: f32 = 39.4784176;
 
 pub fn create_solar_system() -> Vec<Body> {
+    create_solar_system_with_rng(&mut rand::rng(), 10000)
+}
+
+/// Shared initialization for interactive and reproducible headless runs.
+pub fn create_solar_system_with_rng(rng: &mut impl Rng, asteroids: usize) -> Vec<Body> {
     let mut bodies = Vec::new();
 
     // Sun
@@ -54,16 +59,16 @@ pub fn create_solar_system() -> Vec<Body> {
         });
     }
 
-    for _ in 0..10000 {
-        let distance = random_range(2.2..3.2);
-        let angle = random_range(0.0..2.0 * std::f32::consts::PI);
+    for _ in 0..asteroids {
+        let distance = rng.random_range(2.2..3.2);
+        let angle = rng.random_range(0.0..2.0 * std::f32::consts::PI);
 
         let speed = (39.4784176_f32 / distance).sqrt();
 
         bodies.push(Body {
             position: [
                 distance * angle.cos(),
-                random_range(-0.01..0.01),
+                rng.random_range(-0.01..0.01),
                 distance * angle.sin(),
             ],
             velocity: [
